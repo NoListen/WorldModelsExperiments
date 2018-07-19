@@ -74,6 +74,7 @@ if LOAD_DATA:
 else:
   filelist = os.listdir(DATA_DIR)
   filelist.sort()
+  filelist = [f for f in filelist if '.npz' in f]
   filelist = filelist[0:10000]
   dataset = create_dataset(filelist)
   with open("vae/data.p", "wb") as f:
