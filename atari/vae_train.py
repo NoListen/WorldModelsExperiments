@@ -12,6 +12,7 @@ import numpy as np
 np.set_printoptions(precision=4, edgeitems=6, linewidth=100, suppress=True)
 
 from vae.vae import ConvVAE, reset_graph
+import pickle
 
 # Hyperparameters for ConvVAE
 z_size=32
@@ -22,6 +23,7 @@ kl_tolerance=0.5
 # Parameters for training
 NUM_EPOCH = 10
 DATA_DIR = "record"
+LOAD_DATA = True
 
 model_save_path = "tf_vae"
 if not os.path.exists(model_save_path):
@@ -55,14 +57,28 @@ def create_dataset(filelist, N=10000, M=1000): # N is 10000 episodes, M is numbe
     idx += l
     if ((i+1) % 100 == 0):
       print("loading file", i+1)
+
+  if len(data) == M*N and idx < M*N:
+    data = data[:idx]
   return data
 
+if not os.path.exists("vae/data.p"):
+  print("No data to load directly")
+  LOAD_DATA = False
+
 # load dataset from record/*. only use first 10K, sorted by filename.
-filelist = os.listdir(DATA_DIR)
-filelist.sort()
-filelist = filelist[0:10000]
-#print("check total number of images:", count_length_of_filelist(filelist))
-dataset = create_dataset(filelist)
+if LOAD_DATA:
+  with open("vae/data.p", "rb") as f:
+    dataset = pickle.load(f)
+else:
+  filelist = os.listdir(DATA_DIR)
+  filelist.sort()
+  filelist = filelist[0:10000]
+  dataset = create_dataset(filelist)
+  with open("vae/data.p", "wb") as f:
+    pickle.dump(dataset, f)
+
+print("The dataset has shape", dataset.shape)
 
 # split into batches:
 total_length = len(dataset)
