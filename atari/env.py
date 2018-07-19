@@ -13,7 +13,7 @@ SCREEN_Y = 64
 
 class AtariRescale64x64(gym.ObservationWrapper):
     def __init__(self, env):
-        super(AtariRescale64x64, self).__init__(env)
+        gym.ObservationWrapper.__init__(self, env)
         self.observation_space = Box(0.0, 255.0, [64, 64, 1])
 
     def observation(self, frame):
@@ -24,7 +24,7 @@ class AtariRescale64x64(gym.ObservationWrapper):
 
 class AtariRescaleClip64x64(gym.ObservationWrapper):
     def __init__(self, env):
-        super(AtariRescale64x64, self).__init__(env)
+        gym.ObservationWrapper.__init__(self, env)
         self.observation_space = Box(0.0, 255.0, [64, 64, 1])
 
     def observation(self, frame):
