@@ -1,5 +1,6 @@
 import numpy as np
 import gym
+from gym import spaces
 
 from scipy.misc import imresize as resize
 from gym.spaces.box import Box
@@ -14,7 +15,8 @@ SCREEN_Y = 64
 class AtariRescale64x64(gym.ObservationWrapper):
     def __init__(self, env):
         gym.ObservationWrapper.__init__(self, env)
-        self.observation_space = Box(0.0, 255.0, [64, 64, 1])
+        self.observation_space = spaces.Box(low=0, high=255,
+                                            shape=(64, 64, 1), dtype=np.uint8)
 
     def observation(self, frame):
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
@@ -25,11 +27,12 @@ class AtariRescale64x64(gym.ObservationWrapper):
 class AtariRescaleClip64x64(gym.ObservationWrapper):
     def __init__(self, env):
         gym.ObservationWrapper.__init__(self, env)
-        self.observation_space = Box(0.0, 255.0, [64, 64, 1])
+        self.observation_space = spaces.Box(low=0, high=255,
+                                            shape=(64, 64, 1), dtype=np.uint8)
 
     def observation(self, frame):
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-        frame = cv2.resize(frame, (64, 80), interpolation=cv2.INTER_AREA)
+        frame = cv2.resize(frame, (64, 84), interpolation=cv2.INTER_AREA)
         frame = frame[14:78, ...]
         return frame
 
@@ -93,6 +96,30 @@ class MaxAndSkipEnv(gym.Wrapper):
         return self.env.reset(**kwargs)
 
 
+class SkipEnv(gym.Wrapper):
+    def __init__(self, env, skip=4):
+        """Return only every `skip`-th frame"""
+        gym.Wrapper.__init__(self, env)
+        # most recent raw observations (for max pooling across time steps)
+        self._obs_buffer = np.zeros((2,)+env.observation_space.shape, dtype=np.uint8)
+        self._skip       = skip
+
+    def step(self, action):
+        """Repeat action, sum reward, and max over last observations."""
+        total_reward = 0.0
+        done = None
+        for i in range(self._skip):
+            obs, reward, done, info = self.env.step(action)
+            total_reward += reward
+            if done:
+                break
+
+        return obs, total_reward, done, info
+
+    def reset(self, **kwargs):
+        return self.env.reset(**kwargs)
+
+
 class ClipRewardEnv(gym.RewardWrapper):
     def __init__(self, env):
         gym.RewardWrapper.__init__(self, env)
@@ -105,11 +132,12 @@ class ClipRewardEnv(gym.RewardWrapper):
 def make_atari(env_id, noop_max=3, clip_frame=True):
   env = gym.make(env_id)
   env = NoopResetEnv(env, noop_max=noop_max)
-  env = MaxAndSkipEnv(env, skip=4)
+  env = SkipEnv(env, skip=4)
+  # env = MaxAndSkipEnv(env, skip=4)
   if clip_frame:
       env = AtariRescaleClip64x64(env)
   else:
-      env = AtariRescal64x64(env)
+      env = AtariRescale64x64(env)
   env = ClipRewardEnv(env)
   return env
 

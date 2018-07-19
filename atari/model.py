@@ -95,7 +95,7 @@ class Model:
   def encode_obs(self, obs):
     # convert raw obs to z, mu, logvar
     result = np.copy(obs).astype(np.float)/255.0
-    result = result.reshape(1, 64, 64, 3)
+    result = result.reshape(1, 64, 64, 1)
     mu, logvar = self.vae.encode_mu_logvar(result)
     mu = mu[0]
     logvar = logvar[0]
@@ -138,11 +138,11 @@ class Model:
       params_2 = params[cut_off:]
       self.bias_hidden = params_1[:self.hidden_size]
       self.weight_hidden = params_1[self.hidden_size:].reshape(self.input_size, self.hidden_size)
-      self.bias_output = params_2[:3]
-      self.weight_output = params_2[3:].reshape(self.hidden_size, 3)
+      self.bias_output = params_2[:self.na]
+      self.weight_output = params_2[self.na:].reshape(self.hidden_size, self.na)
     else:
-      self.bias = np.array(model_params[:3])
-      self.weight = np.array(model_params[3:]).reshape(self.input_size, 3)
+      self.bias = np.array(model_params[:self.na])
+      self.weight = np.array(model_params[self.na:]).reshape(self.input_size, self.na)
 
   def load_model(self, filename):
     with open(filename) as f:

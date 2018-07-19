@@ -10,6 +10,8 @@ def reset_graph():
     sess.close()
   tf.reset_default_graph()
 
+
+# Use Gray image instead of RGB image.
 class ConvVAE(object):
   def __init__(self, z_size=32, batch_size=1, learning_rate=0.0001, kl_tolerance=0.5, is_training=False, reuse=False, gpu_mode=False):
     self.z_size = z_size
@@ -31,7 +33,7 @@ class ConvVAE(object):
     self.g = tf.Graph()
     with self.g.as_default():
 
-      self.x = tf.placeholder(tf.float32, shape=[None, 64, 64, 3])
+      self.x = tf.placeholder(tf.float32, shape=[None, 64, 64, 1])
 
       # Encoder
       h = tf.layers.conv2d(self.x, 32, 4, strides=2, activation=tf.nn.relu, name="enc_conv1")
@@ -53,7 +55,7 @@ class ConvVAE(object):
       h = tf.layers.conv2d_transpose(h, 128, 5, strides=2, activation=tf.nn.relu, name="dec_deconv1")
       h = tf.layers.conv2d_transpose(h, 64, 5, strides=2, activation=tf.nn.relu, name="dec_deconv2")
       h = tf.layers.conv2d_transpose(h, 32, 6, strides=2, activation=tf.nn.relu, name="dec_deconv3")
-      self.y = tf.layers.conv2d_transpose(h, 3, 6, strides=2, activation=tf.nn.sigmoid, name="dec_deconv4")
+      self.y = tf.layers.conv2d_transpose(h, 1, 6, strides=2, activation=tf.nn.sigmoid, name="dec_deconv4")
       
       # train ops
       if self.is_training:
