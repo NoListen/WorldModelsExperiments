@@ -4,7 +4,7 @@ final model saved into tf_vae/vae.json
 '''
 
 import os
-os.environ["CUDA_VISIBLE_DEVICES"]="0" # can just override for multi-gpu systems
+os.environ["CUDA_VISIBLE_DEVICES"]="1" # can just override for multi-gpu systems
 
 import tensorflow as tf
 import random
@@ -43,11 +43,12 @@ def count_length_of_filelist(filelist):
   return  total_length
 
 def create_dataset(filelist, N=10000, M=1000): # N is 10000 episodes, M is number of timesteps
-  data = np.zeros((M*N, 64, 64, 3), dtype=np.uint8)
+  data = np.zeros((M*N, 64, 64, 1), dtype=np.uint8)
   idx = 0
   for i in range(N):
     filename = filelist[i]
     raw_data = np.load(os.path.join("record", filename))['obs']
+    raw_data = np.expand_dims(raw_data, axis=-1)
     l = len(raw_data)
     if (idx+l) > (M*N):
       data = data[0:idx]
@@ -76,7 +77,7 @@ else:
   filelist = filelist[0:10000]
   dataset = create_dataset(filelist)
   with open("vae/data.p", "wb") as f:
-    pickle.dump(dataset, f)
+    pickle.dump(dataset, f, protocol=4)
 
 print("The dataset has shape", dataset.shape)
 
