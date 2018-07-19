@@ -11,16 +11,26 @@ SCREEN_Y = 64
 
 # Borrowed from the universe-starter-agent, openai baselines
 
-class AtariRescal64x64(gym.ObservationWrapper):
+class AtariRescale64x64(gym.ObservationWrapper):
     def __init__(self, env):
         super(AtariRescale64x64, self).__init__(env)
-        self.width = SCREEN_X
-        self.height = SCREEN_Y
         self.observation_space = Box(0.0, 255.0, [64, 64, 1])
 
     def observation(self, frame):
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-        frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
+        frame = cv2.resize(frame, (64, 64), interpolation=cv2.INTER_AREA)
+        return frame
+
+
+class AtariRescaleClip64x64(gym.ObservationWrapper):
+    def __init__(self, env):
+        super(AtariRescale64x64, self).__init__(env)
+        self.observation_space = Box(0.0, 255.0, [64, 64, 1])
+
+    def observation(self, frame):
+        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+        frame = cv2.resize(frame, (64, 80), interpolation=cv2.INTER_AREA)
+        frame = frame[14:78, ...]
         return frame
 
 
@@ -92,11 +102,14 @@ class ClipRewardEnv(gym.RewardWrapper):
         return np.sign(reward)
 
 
-def make_atari(env_id, noop_max=3):
+def make_atari(env_id, noop_max=3, clip_frame=True):
   env = gym.make(env_id)
   env = NoopResetEnv(env, noop_max=noop_max)
   env = MaxAndSkipEnv(env, skip=4)
-  env = AtariRescal64x64(env)
+  if clip_frame:
+      env = AtariRescaleClip64x64(env)
+  else:
+      env = AtariRescal64x64(env)
   env = ClipRewardEnv(env)
   return env
 
@@ -106,15 +119,15 @@ def make_env(env_name, seed=-1, render_mode=False):
   if (seed >= 0):
     env.seed(seed)
 
-  '''
-  print("environment details")
-  print("env.action_space", env.action_space)
-  print("high, low", env.action_space.high, env.action_space.low)
-  print("environment details")
-  print("env.observation_space", env.observation_space)
-  print("high, low", env.observation_space.high, env.observation_space.low)
-  assert False
-  '''
+
+  # print("environment details")
+  # print("env.action_space", env.action_space)
+  # print("high, low", env.action_space.high, env.action_space.low)
+  # print("environment details")
+  # print("env.observation_space", env.observation_space)
+  # print("high, low", env.observation_space.high, env.observation_space.low)
+  # assert False
+
   return env
 
 # from https://github.com/openai/gym/blob/master/gym/envs/box2d/car_racing.py

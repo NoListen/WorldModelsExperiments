@@ -47,11 +47,15 @@ def sample(p):
 
 class Model:
   ''' simple one layer model for car racing '''
-  def __init__(self, load_model=True):
-    self.env_name = "carracing"
+  def __init__(self, load_model=True, env_name="Pong-v0", render_mode=False):
+    self.env_name = env_name
+    self.make_env()
+    self.z_size = 32
+
     self.vae = ConvVAE(batch_size=1, gpu_mode=False, is_training=False, reuse=True)
 
-    self.rnn = MDNRNN(hps_sample, gpu_mode=False, reuse=True)
+    hps_atari = hps_sample._replace(input_seq_width=self.z_size+self.na)
+    self.rnn = MDNRNN(hps_atari, gpu_mode=False, reuse=True)
 
     if load_model:
       self.vae.load_json('vae/vae.json')
@@ -61,25 +65,29 @@ class Model:
     self.rnn_mode = True
 
     self.input_size = rnn_output_size(EXP_MODE)
-    self.z_size = 32
-
-    if EXP_MODE == MODE_Z_HIDDEN: # one hidden layer
-      self.hidden_size = 40
-      self.weight_hidden = np.random.randn(self.input_size, self.hidden_size)
-      self.bias_hidden = np.random.randn(self.hidden_size)
-      self.weight_output = np.random.randn(self.hidden_size, 3)
-      self.bias_output = np.random.randn(3)
-      self.param_count = ((self.input_size+1)*self.hidden_size) + (self.hidden_size*3+3)
-    else:
-      self.weight = np.random.randn(self.input_size, 3)
-      self.bias = np.random.randn(3)
-      self.param_count = (self.input_size)*3+3
+    self.init_controller()
 
     self.render_mode = False
 
+
+  # INIT The Controller After the enviroment Creation.
   def make_env(self, seed=-1, render_mode=False):
     self.render_mode = render_mode
     self.env = make_env(self.env_name, seed=seed, render_mode=render_mode)
+    self.na = self.env.action_space.n # discrete by default.
+
+  def init_controller(self):
+    if EXP_MODE == MODE_Z_HIDDEN:  # one hidden layer
+      self.hidden_size = 40
+      self.weight_hidden = np.random.randn(self.input_size, self.hidden_size)
+      self.bias_hidden = np.random.randn(self.hidden_size)
+      self.weight_output = np.random.randn(self.hidden_size, self.na)  # pong. Modify later.
+      self.bias_output = np.random.randn(self.na)
+      self.param_count = (self.input_size + 1) * self.hidden_size + (self.hidden_size + 1) * self.na
+    else:
+      self.weight = np.random.randn(self.input_size, self.na)
+      self.bias = np.random.randn(self.na)
+      self.param_count = (self.input_size + 1) * self.na
 
   def reset(self):
     self.state = rnn_init_state(self.rnn)
@@ -105,15 +113,20 @@ class Model:
     action[2] = clip(np.tanh(action[2]))
     '''
     if EXP_MODE == MODE_Z_HIDDEN: # one hidden layer
-      h = np.tanh(np.dot(h, self.weight_hidden) + self.bias_hidden)
-      action = np.tanh(np.dot(h, self.weight_output) + self.bias_output)
+      h = np.maximum(np.dot(h, self.weight_hidden) + self.bias_hidden, 0)
+      action = np.argmax(np.dot(h, self.weight_output) + self.bias_output)
     else:
-      action = np.tanh(np.dot(h, self.weight) + self.bias)
+      action = np.argmax(np.dot(h, self.weight) + self.bias)
 
-    action[1] = (action[1]+1.0) / 2.0
-    action[2] = clip(action[2])
+    oh_action = np.zeros(self.na)
+    oh_action[action] = 1
 
-    self.state = rnn_next_state(self.rnn, z, action, self.state)
+    # action[1] = (action[1]+1.0) / 2.0
+    # action[2] = clip(action[2])
+
+
+    # TODO check about this fucntion
+    self.state = rnn_next_state(self.rnn, z, oh_action, self.state)
 
     return action
 

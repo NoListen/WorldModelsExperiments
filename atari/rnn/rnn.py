@@ -293,7 +293,7 @@ def rnn_init_state(rnn):
   return rnn.sess.run(rnn.initial_state)
 
 def rnn_next_state(rnn, z, a, prev_state):
-  input_x = np.concatenate((z.reshape((1, 1, 32)), a.reshape((1, 1, 3))), axis=2)
+  input_x = np.concatenate((z.reshape((1, 1, 32)), a.reshape((1, 1, -1))), axis=2)
   feed = {rnn.input_x: input_x, rnn.initial_state:prev_state}
   return rnn.sess.run(rnn.final_state, feed)
 
