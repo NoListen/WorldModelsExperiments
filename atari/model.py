@@ -21,9 +21,9 @@ MODE_ZH = 4
 
 EXP_MODE = MODE_ZH
 
-def make_model(load_model=True):
+def make_model(load_model=True, env_name="Pong-v0"):
   # can be extended in the future.
-  model = Model(load_model=load_model)
+  model = Model(load_model=load_model, env_name=env_name)
   return model
 
 def sigmoid(x):

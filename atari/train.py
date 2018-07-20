@@ -34,7 +34,7 @@ num_worker_trial = 1
 
 population = num_worker * num_worker_trial
 
-gamename = 'carracing'
+gamename = 'Pong-v0'
 optimizer = 'pepg' # What's this optimizer
 antithetic = True
 batch_mode = 'mean' # How to compute the loss.
@@ -60,10 +60,10 @@ RESULT_PACKET_SIZE = 4*num_worker_trial # ??
 ###
 
 def initialize_settings(sigma_init=0.1, sigma_decay=0.9999): # used for what ?
-  global population, filebase, game, model, num_params, es, PRECISION, SOLUTION_PACKET_SIZE, RESULT_PACKET_SIZE
+  global population, filebase, game, gamename, model, num_params, es, PRECISION, SOLUTION_PACKET_SIZE, RESULT_PACKET_SIZE
   population = num_worker * num_worker_trial # I think it has been calculated.
   filebase = 'log/'+gamename+'.'+optimizer+'.'+str(num_episode)+'.'+str(population)
-  model = make_model() # Check about the model !
+  model = make_model(env_name=gamename) # Check about the model !
   num_params = model.param_count
   print("size of model", num_params)
 
