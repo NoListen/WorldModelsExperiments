@@ -10,6 +10,20 @@ SCREEN_X = 64
 SCREEN_Y = 64
 
 
+class PongBinary(gym.ObservationWrapper):
+    def __init__(self, env):
+        gym.ObservationWrapper.__init__(self, env)
+        self.observation_space = spaces.Box(low=0, high=255,
+                                            shape=(64, 64, 1), dtype=np.uint8)
+
+    def observation(self, frame):
+        frame = frame[35:195, :, 0]
+        frame[frame==144] = 0
+        frame[frame==109] = 0
+        frame[frame!=0] = 255
+        frame = cv2.resize(frame, (64, 64), interpolation=cv2.INTER_AREA)
+        return frame
+
 # Borrowed from the universe-starter-agent, openai baselines
 
 class AtariRescale64x64(gym.ObservationWrapper):
@@ -134,10 +148,13 @@ def make_atari(env_id, noop_max=3, clip_frame=True):
   env = NoopResetEnv(env, noop_max=noop_max)
   env = SkipEnv(env, skip=4)
   # env = MaxAndSkipEnv(env, skip=4)
-  if clip_frame:
-      env = AtariRescaleClip64x64(env)
+  if env_id == "Pong-v0":
+      env = PongBinary(env)
   else:
-      env = AtariRescale64x64(env)
+      if clip_frame:
+          env = AtariRescaleClip64x64(env)
+      else:
+          env = AtariRescale64x64(env)
   env = ClipRewardEnv(env)
   return env
 

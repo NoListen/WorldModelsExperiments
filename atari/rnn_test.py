@@ -20,6 +20,13 @@ parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFo
 parser.add_argument('--env', help='environment ID', default='Pong-v0')
 args = parser.parse_args()
 
+def concat_img(im1, im2, im3):
+  im = np.zeros((64, 192))
+  im[:, :64] = im1.reshape(64, 64)
+  im[:, 64:128] = im2.reshape(64, 64)
+  im[:, 128:] = im3.reshape(64, 64)
+  return im
+
 # Disable the GPU
 os.environ["CUDA_VISIBLE_DEVICES"]="-1"
 z_size=32
@@ -93,11 +100,12 @@ for i in range(steps):
 
   if pz is not None: # decode from the z
     frame = vae.decode(pz[None])
-    neglogp = neg_likelihood(logmix, mean, logstd, z.reshape(32,1))
-    imsave(output_dir + '/%s_origin_%.2f.png' % (pad_num(i), np.exp(-neglogp)), 255.*ob.reshape(64, 64))
-    # imsave(output_dir + '/%s_origin.png' % pad_num(i), 255.*ob.reshape(64, 64))
-    imsave(output_dir + '/%s_reconstruct.png' % pad_num(i), 255. * frame[0].reshape(64, 64))
-
+    frame2 = vae.decode(z)
+    #neglogp = neg_likelihood(logmix, mean, logstd, z.reshape(32,1))
+    #imsave(output_dir + '/%s_origin_%.2f.png' % (pad_num(i), np.exp(-neglogp)), 255.*ob.reshape(64, 64))
+    #imsave(output_dir + '/%s_reconstruct.png' % pad_num(i), 255. * frame[0].reshape(64, 64))
+    img = concat_img(255.*ob, 255*frame2, 255.*frame)
+    imsave(output_dir + '/%s.png' % pad_num(i), img)
 
   (logmix, mean, logstd, state) = rnn.sess.run([rnn.out_logmix, rnn.out_mean,
                                                 rnn.out_logstd, rnn.final_state], feed)
