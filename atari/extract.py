@@ -22,12 +22,17 @@ model = make_model(load_model=False)
 
 total_frames = 0
 model.make_env(render_mode=render_mode)
+
+obs = model.env.reset()
+action = model.env.action_space.sample()
+recording_obs = np.array([obs for i in range(MAX_FRAMES)], dtype="uint8")
+recording_action = np.array([action for i in range(MAX_FRAMES)])
+
+
 for trial in range(MAX_TRIALS): # 200 trials per worker
   try:
     random_generated_int = random.randint(0, 2**31-1)
     filename = DIR_NAME+"/"+str(random_generated_int)+".npz"
-    recording_obs = []
-    recording_action = []
 
     np.random.seed(random_generated_int)
     model.env.seed(random_generated_int)
@@ -44,12 +49,12 @@ for trial in range(MAX_TRIALS): # 200 trials per worker
       else:
         model.env.render("rgb_array")
 
-      recording_obs.append(obs)
+      recording_obs[frame] = obs
 
       z, mu, logvar = model.encode_obs(obs)
       action = model.get_action(z)
 
-      recording_action.append(action)
+      recording_action[frame] = action
       obs, reward, done, info = model.env.step(action)
 
       if done:
@@ -57,9 +62,7 @@ for trial in range(MAX_TRIALS): # 200 trials per worker
 
     total_frames += (frame+1)
     print("dead at", frame+1, "total recorded frames for this worker", total_frames)
-    recording_obs = np.array(recording_obs, dtype=np.uint8)
-    recording_action = np.array(recording_action, dtype=np.float16)
-    np.savez_compressed(filename, obs=recording_obs, action=recording_action)
+    np.savez_compressed(filename, obs=recording_obs[:frame+1], action=recording_action[:frame+1])
   except gym.error.Error:
     print("stupid gym error, life goes on")
     model.env.close()
