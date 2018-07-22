@@ -5,10 +5,7 @@ import tensorflow as tf
 import random
 from vae.vae import ConvVAE, reset_graph
 from scipy.misc import imsave
-
-def pad_num(n):
-    s = str(n)
-    return '0'*(4-len(s)) + s
+from utils import pad_num
 
 os.environ["CUDA_VISIBLE_DEVICES"]="-1" # disable GPU
 

@@ -11,6 +11,7 @@ import random
 from vae.vae import ConvVAE, reset_graph
 import argparse
 from env import make_env
+from utils import onehot_actions
 
 def count_min_length_of_filelist(filelist):
   N = len(filelist)
@@ -38,13 +39,6 @@ model_path_name = "tf_vae"
 if not os.path.exists(SERIES_DIR):
     os.makedirs(SERIES_DIR)
 
-def onehot_actions(actions):
-  actions = actions.astype(np.uint8)
-  l = len(actions)
-  oh_actions = np.zeros((l, N))
-  oh_actions[np.arange(l), actions] = 1
-  return oh_actions
-
 def load_raw_data_list(filelist, min_seq_len):
   data_list = []
   action_list = []
@@ -56,7 +50,7 @@ def load_raw_data_list(filelist, min_seq_len):
     action = raw_data['action'][:min_seq_len, ...]
 
     obs = np.expand_dims(obs, axis=-1)
-    oh_action = onehot_actions(action)
+    oh_action = onehot_actions(action, N) # N is a global variable
     data_list.append(obs)
     action_list.append(oh_action)
     if ((i+1) % 1000 == 0):
