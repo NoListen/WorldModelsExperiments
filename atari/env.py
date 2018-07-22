@@ -5,7 +5,8 @@ from gym import spaces
 from scipy.misc import imresize as resize
 from gym.spaces.box import Box
 import cv2
-
+from scipy.misc import imsave
+import time
 SCREEN_X = 64
 SCREEN_Y = 64
 
@@ -21,6 +22,7 @@ class PongBinary(gym.ObservationWrapper):
         frame[frame==144] = 0
         frame[frame==109] = 0
         frame[frame!=0] = 255
+        frame = frame[::2, ::2]
         frame = cv2.resize(frame, (64, 64), interpolation=cv2.INTER_AREA)
         return frame
 
