@@ -35,6 +35,7 @@ print("environment", args.env, "has", N, "discrete actions")
 DATA_DIR = "record"
 SERIES_DIR = "series"
 model_path_name = "tf_vae"
+ENV_NAME = "PongNoFrameskip-v0"
 
 if not os.path.exists(SERIES_DIR):
     os.makedirs(SERIES_DIR)

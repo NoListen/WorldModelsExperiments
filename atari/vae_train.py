@@ -9,6 +9,7 @@ os.environ["CUDA_VISIBLE_DEVICES"]="1" # can just override for multi-gpu systems
 import tensorflow as tf
 import random
 import numpy as np
+from scipy.misc import imsave
 np.set_printoptions(precision=4, edgeitems=6, linewidth=100, suppress=True)
 
 from vae.vae import ConvVAE, reset_graph
@@ -20,10 +21,12 @@ batch_size=100
 learning_rate=0.0001
 kl_tolerance=0.5
 
+
 # Parameters for training
 NUM_EPOCH = 10
 DATA_DIR = "record"
 LOAD_DATA = True
+ENV_NAME = "BoxingNoFrameskip-v4"
 
 model_save_path = "tf_vae"
 if not os.path.exists(model_save_path):
@@ -42,7 +45,7 @@ def count_length_of_filelist(filelist):
       print("loading file", i)
   return  total_length
 
-def create_dataset(filelist, N=10000, M=1000): # N is 10000 episodes, M is number of timesteps
+def create_dataset(filelist, N=5000, M=1000): # N is 10000 episodes, M is number of timesteps
   data = np.zeros((M*N, 64, 64, 1), dtype=np.uint8)
   idx = 0
   for i in range(N):
@@ -97,6 +100,10 @@ vae = ConvVAE(z_size=z_size,
               reuse=False,
               gpu_mode=True)
 
+import os
+if not os.path.exists("vimgs"):
+  os.mkdir("vimgs")
+
 # train loop:
 print("train", "step", "loss", "recon_loss", "kl_loss")
 for epoch in range(NUM_EPOCH):
@@ -105,16 +112,21 @@ for epoch in range(NUM_EPOCH):
     batch = dataset[idx*batch_size:(idx+1)*batch_size]
 
     obs = batch.astype(np.float)/255.0
-
     feed = {vae.x: obs,}
 
     (train_loss, r_loss, kl_loss, train_step, _) = vae.sess.run([
       vae.loss, vae.r_loss, vae.kl_loss, vae.global_step, vae.train_op
     ], feed)
   
-    if ((train_step+1) % 500 == 0):
+    if ((train_step+1) % 500 == 0 or train_step == 1):
       print("step", (train_step+1), train_loss, r_loss, kl_loss)
     if ((train_step+1) % 5000 == 0):
+      #rimgs = vae.sess.run(vae.y, feed)
+      #tdir = "vimgs/%i" % train_step
+      #if not os.path.exists(tdir):
+      #  os.mkdir(tdir)
+      #for i in range(len(rimgs)):
+      #  imsave(tdir+'/%i.png' % i, rimgs[i].reshape(64,64))
       vae.save_json("tf_vae/vae.json")
 
 # finished, final model:

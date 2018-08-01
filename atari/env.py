@@ -150,7 +150,7 @@ def make_atari(env_id, noop_max=3, clip_frame=True):
   env = NoopResetEnv(env, noop_max=noop_max)
   env = SkipEnv(env, skip=4)
   # env = MaxAndSkipEnv(env, skip=4)
-  if env_id == "Pong-v0":
+  if env_id == "PongNoFrameskip-v4":
       env = PongBinary(env)
   else:
       if clip_frame:

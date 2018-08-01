@@ -11,6 +11,8 @@ from model import make_model
 
 MAX_FRAMES = 1000 # max length of carracing
 MAX_TRIALS = 200 # just use this to extract one trial. 
+#ENV_NAME = "Pong-v0"
+ENV_NAME = "BoxingNoFrameskip-v4"
 
 render_mode = False # for debugging.
 
@@ -18,8 +20,10 @@ DIR_NAME = 'record'
 if not os.path.exists(DIR_NAME):
     os.makedirs(DIR_NAME)
 
-model = make_model(load_model=False)
+print("Directory built")
+model = make_model(load_model=False, env_name=ENV_NAME)
 
+print("Make Model")
 total_frames = 0
 model.make_env(render_mode=render_mode)
 
@@ -52,7 +56,7 @@ for trial in range(MAX_TRIALS): # 200 trials per worker
       recording_obs[frame] = obs
 
       z, mu, logvar = model.encode_obs(obs)
-      action = model.get_action(z)
+      action = model.get_action(z, epsilon=0.5)
 
       recording_action[frame] = action
       obs, reward, done, info = model.env.step(action)

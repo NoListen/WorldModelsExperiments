@@ -34,7 +34,7 @@ num_worker_trial = 1
 
 population = num_worker * num_worker_trial
 
-gamename = 'Pong-v0'
+gamename = 'PongNoFrameskip-v4'
 optimizer = 'pepg' # What's this optimizer
 antithetic = True
 batch_mode = 'mean' # How to compute the loss.

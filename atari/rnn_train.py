@@ -10,6 +10,7 @@ import tensorflow as tf
 import random
 import time
 
+from tensorboard_logger import configure, log_value
 from vae.vae import ConvVAE, reset_graph
 from rnn.rnn import HyperParams, MDNRNN
 
@@ -18,6 +19,8 @@ import argparse
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--env', help='environment ID', default='Pong-v0')
 args = parser.parse_args()
+
+configure("rnn/%s_rnn" % args.env)
 
 # number of actions
 na = make_env(args.env).action_space.n
@@ -54,9 +57,9 @@ def default_hps(na, z_size, max_seq_len):
                      rnn_size=256,    # number of rnn cells
                      batch_size=100,   # minibatch sizes
                      grad_clip=1.0,
-                     num_mixture=5,   # number of mixtures in MDN
+                     num_mixture=3,   # number of mixtures in MDN
                      learning_rate=0.001,
-                     decay_rate=1.0,
+                     decay_rate=0.99999,
                      min_learning_rate=0.00001,
                      use_layer_norm=0, # set this to 1 to get more stable results (less chance of NaN), but slower
                      use_recurrent_dropout=0,
@@ -111,6 +114,7 @@ for local_step in range(hps.num_steps):
     end = time.time()
     time_taken = end-start
     start = time.time()
+    log_value("training loss", train_cost, int(step//20))
     output_log = "step: %d, lr: %.6f, cost: %.4f, train_time_taken: %.4f" % (step, curr_learning_rate, train_cost, time_taken)
     print(output_log)
 

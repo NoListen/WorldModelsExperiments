@@ -53,7 +53,6 @@ class Model:
     self.z_size = 32
 
     self.vae = ConvVAE(batch_size=1, gpu_mode=False, is_training=False, reuse=True)
-
     hps_atari = hps_sample._replace(input_seq_width=self.z_size+self.na)
     self.rnn = MDNRNN(hps_atari, gpu_mode=False, reuse=True)
 
@@ -103,7 +102,7 @@ class Model:
     z = mu + np.exp(logvar/2.0) * np.random.randn(*s)
     return z, mu, logvar
 
-  def get_action(self, z):
+  def get_action(self, z, epsilon=0.0):
     h = rnn_output(self.state, z, EXP_MODE)
 
     '''
@@ -112,11 +111,14 @@ class Model:
     action[1] = sigmoid(action[1])
     action[2] = clip(np.tanh(action[2]))
     '''
-    if EXP_MODE == MODE_Z_HIDDEN: # one hidden layer
-      h = np.maximum(np.dot(h, self.weight_hidden) + self.bias_hidden, 0)
-      action = np.argmax(np.dot(h, self.weight_output) + self.bias_output)
+    if np.random.rand() < epsilon:
+      action = np.random.randint(0, self.na)
     else:
-      action = np.argmax(np.dot(h, self.weight) + self.bias)
+      if EXP_MODE == MODE_Z_HIDDEN: # one hidden layer
+        h = np.maximum(np.dot(h, self.weight_hidden) + self.bias_hidden, 0)
+        action = np.argmax(np.dot(h, self.weight_output) + self.bias_output)
+      else:
+        action = np.argmax(np.dot(h, self.weight) + self.bias)
 
     oh_action = np.zeros(self.na)
     oh_action[action] = 1

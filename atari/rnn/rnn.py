@@ -41,7 +41,7 @@ def default_hps():
                      rnn_size=256,    # number of rnn cells
                      batch_size=100,   # minibatch sizes
                      grad_clip=1.0,
-                     num_mixture=5,   # number of mixtures in MDN
+                     num_mixture=3,   # number of mixtures in MDN
                      learning_rate=0.001,
                      decay_rate=1.0,
                      min_learning_rate=0.00001,
