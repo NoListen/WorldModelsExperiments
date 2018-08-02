@@ -64,10 +64,12 @@ class ConvVAE(object):
         eps = 1e-6 # avoid taking log of zero
         
         # reconstruction loss
-        self.r_loss = tf.reduce_sum(
-          tf.square(self.x - self.y),
-          reduction_indices = [1,2,3]
-        )
+        #self.r_loss = tf.reduce_sum(
+        #  tf.square(self.x - self.y),
+        #  reduction_indices = [1,2,3]
+        #)
+        self.r_loss = -tf.reduce_sum(self.x * tf.log(self.y+1e-8) +
+                                      (1-self.x) * (tf.log(1-self.y+1e-8)),[1,2,3])
         self.r_loss = tf.reduce_mean(self.r_loss)
 
         # augmented kl loss per dim
