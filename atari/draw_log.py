@@ -22,4 +22,6 @@ else:
   plt.xlabel("time")
   plt.ylabel("avg reward")
   plt.savefig(args.target.split('.')[0]+".pdf")
+  F = plt.gcf()
+  print("the default size is", F.get_size_inches())
   f.close()
