@@ -122,7 +122,8 @@ class Model:
         action = np.dot(h, self.weight) + self.bias
     action = np.tanh(action)
     action = int((action+1)/2*self.na)
-
+    if action == self.na: # overflow
+      action -= 1
     oh_action = np.zeros(self.na)
     oh_action[action] = 1
 
