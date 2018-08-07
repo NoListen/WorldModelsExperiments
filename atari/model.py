@@ -74,19 +74,20 @@ class Model:
     self.render_mode = render_mode
     self.env = make_env(self.env_name, seed=seed, render_mode=render_mode)
     self.na = self.env.action_space.n # discrete by default.
+    print("the action space is", self.na)
 
   def init_controller(self):
     if EXP_MODE == MODE_Z_HIDDEN:  # one hidden layer
       self.hidden_size = 40
       self.weight_hidden = np.random.randn(self.input_size, self.hidden_size)
       self.bias_hidden = np.random.randn(self.hidden_size)
-      self.weight_output = np.random.randn(self.hidden_size, self.na)  # pong. Modify later.
-      self.bias_output = np.random.randn(self.na)
-      self.param_count = (self.input_size + 1) * self.hidden_size + (self.hidden_size + 1) * self.na
+      self.weight_output = np.random.randn(self.hidden_size, 1)  # pong. Modify later.
+      self.bias_output = np.random.randn(1)
+      self.param_count = (self.input_size + 1) * self.hidden_size + (self.hidden_size + 1)
     else:
-      self.weight = np.random.randn(self.input_size, self.na)
-      self.bias = np.random.randn(self.na)
-      self.param_count = (self.input_size + 1) * self.na
+      self.weight = np.random.randn(self.input_size, 1)
+      self.bias = np.random.randn(1)
+      self.param_count = (self.input_size + 1) * 1
 
   def reset(self):
     self.state = rnn_init_state(self.rnn)
@@ -116,9 +117,11 @@ class Model:
     else:
       if EXP_MODE == MODE_Z_HIDDEN: # one hidden layer
         h = np.maximum(np.dot(h, self.weight_hidden) + self.bias_hidden, 0)
-        action = np.argmax(np.dot(h, self.weight_output) + self.bias_output)
+        action = np.dot(h, self.weight_output) + self.bias_output
       else:
-        action = np.argmax(np.dot(h, self.weight) + self.bias)
+        action = np.dot(h, self.weight) + self.bias
+    action = np.tanh(action)
+    action = int((action+1)/2*self.na)
 
     oh_action = np.zeros(self.na)
     oh_action[action] = 1
@@ -140,11 +143,11 @@ class Model:
       params_2 = params[cut_off:]
       self.bias_hidden = params_1[:self.hidden_size]
       self.weight_hidden = params_1[self.hidden_size:].reshape(self.input_size, self.hidden_size)
-      self.bias_output = params_2[:self.na]
+      self.bias_output = params_2[:1]
       self.weight_output = params_2[self.na:].reshape(self.hidden_size, self.na)
     else:
-      self.bias = np.array(model_params[:self.na])
-      self.weight = np.array(model_params[self.na:]).reshape(self.input_size, self.na)
+      self.bias = np.array(model_params[:1])
+      self.weight = np.array(model_params[1:]).reshape(self.input_size, 1)
 
   def load_model(self, filename):
     with open(filename) as f:
