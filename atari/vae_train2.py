@@ -29,29 +29,28 @@ def load_data(load_flag, data_dir):
     filelist = os.listdir(data_dir)
     filelist = [f for f in filelist if '.npz' in f]
     filelist = filelist[0:10000]
-    dataset = create_vae_dataset(filelist)
-    with open("vae/data.p", "wb") as f:
-      pickle.dump(dataset, f, protocol=4)
+    dataset = create_vae_dataset(filelist, N=5000)
+    #with open("vae/data.p", "wb") as f:
+    #  pickle.dump(dataset, f, protocol=4)
   print("The dataset has shape", dataset.shape)
   return dataset
 
-def learn(z_size, batch_size, lr, kl_tolerance,
+def learn(sess,z_size, batch_size, lr, kl_tolerance,
           num_epoch, model_dir, data_dir, load_flag=False):
 
   dataset = load_data(load_flag, data_dir)
   total_length = len(dataset)
   num_batches = int(np.floor(total_length/batch_size))
-  ids = np.arang(total_length)
+  ids = np.arange(total_length)
   np.random.shuffle(ids)
   print("num_batches", num_batches)
 
   check_dir(model_dir)
-  print("the model will be saved to model_dir")
-
-  reset_graph()
+  print("the model will be saved to", model_dir)
 
   vae = ConvVAE(name="conv_vae",
-                z_size=z_size)
+                z_size=z_size,
+                batch_size=batch_size)
 
   var_list = vae.get_variables()
 
@@ -59,8 +58,9 @@ def learn(z_size, batch_size, lr, kl_tolerance,
   # lr = tf.Variable(lr, name='learning_rate', trainable=False) # replace here
 
   # reconstruction loss
-  tf_r_loss = tf.reduce_mean(-tf.reduce_sum(vae.x * tf.log(vae.y+1e-8) +
-                                      (1-vae.x) * (tf.log(1-vae.y+1e-8)),[1,2,3]))
+  tf_r_loss = -tf.reduce_sum(vae.x * tf.log(vae.y+1e-8) +
+                                      (1.-vae.x) * (tf.log(1.-vae.y+1e-8)),[1,2,3])
+  tf_r_loss = tf.reduce_mean(tf_r_loss)
   tf_kl_loss = - 0.5 * tf.reduce_sum(
     (1 + vae.logvar - tf.square(vae.mu) - tf.exp(vae.logvar)),
     axis=1)
@@ -74,7 +74,7 @@ def learn(z_size, batch_size, lr, kl_tolerance,
   train_op = optimizer.apply_gradients(
     tf_grads, global_step=global_step, name='train_step')
 
-
+  sess.run(tf.global_variables_initializer())
   # train loop:
   print("train", "step", "loss", "recon_loss", "kl_loss")
   for epoch in range(num_epoch):
@@ -111,7 +111,10 @@ def main():
   parser.add_argument('--model-dir', default="tf_vae", help="the directory to store vae model")
   parser.add_argument("--load-flag", action="store_true", default=False, help="load the data directly")
   args = vars(parser.parse_args())
-  learn(**args)
+  config = tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
+  config.gpu_options.allow_growth=True
+  with tf.Session(config=config) as sess:
+    learn(sess, **args)
 
 if __name__ == '__main__':
   main()

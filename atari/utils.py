@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.misc import logsumexp
-import tensotflow as tf
+import tensorflow as tf
 import os
 import pickle
 
