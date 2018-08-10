@@ -1,12 +1,71 @@
 import numpy as np
 from scipy.misc import logsumexp
+import tensotflow as tf
+import os
+import pickle
 
 logSqrtTwoPI = np.log(np.sqrt(2.0 * np.pi))
 
+def saveToFlat(var_list, param_pkl_path):
+    # get all the values
+    var_values = np.concatenate([v.flatten() for v in tf.get_default_session().run(var_list)])
+    pickle.dump(var_values, open(param_pkl_path, "wb"))
+
+def load_from_file(param_pkl_path):
+    with open(param_pkl_path, 'rb') as f:
+        params = pickle.load(f)
+    return params.astype(np.float32)
+
+def loadFromFlat(var_list, param_pkl_path):
+    flat_params = load_from_file(param_pkl_path)
+    print("the type of the parameters stored is ", flat_params.dtype)
+    shapes = list(map(lambda x: x.get_shape().as_list(), var_list))
+    total_size = np.sum([int(np.prod(shape)) for shape in shapes])
+    theta = tf.placeholder(tf.float32, [total_size])
+    start = 0
+    assigns = []
+    for (shape, v) in zip(shapes, var_list):
+        size = int(np.prod(shape))
+        print(v.name)
+        assigns.append(tf.assign(v, tf.reshape(theta[start:start + size], shape)))
+        start += size
+    op = tf.group(*assigns)
+    tf.get_default_session().run(op, {theta: flat_params})
+
+def check_dir(dir):
+  if not os.path.exists(dir):
+      os.makedirs(dir)
+
+def reset_graph():
+  # global variables.
+  if 'sess' in globals() and sess:
+    sess.close()
+  tf.reset_default_graph()
+
+
+def create_vae_dataset(filelist, N=10000, M=1000): # N is 10000 episodes, M is number of timesteps
+  data = np.zeros((M*N, 64, 64, 1), dtype=np.uint8)
+  idx = 0
+  for i in range(N):
+    filename = filelist[i]
+    raw_data = np.load(os.path.join("record", filename))['obs']
+    raw_data = np.expand_dims(raw_data, axis=-1)
+    l = len(raw_data)
+    if (idx+l) > (M*N):
+      data = data[0:idx]
+      print('premature break')
+      break
+    data[idx:idx+l] = raw_data
+    idx += l
+    if ((i+1) % 100 == 0):
+      print("loading file", i+1)
+
+  if len(data) == M*N and idx < M*N:
+    data = data[:idx]
+  return data
 
 def lognormal(y, mean, logstd):
   return -0.5 * ((y - mean) / np.exp(logstd)) ** 2 - logstd - logSqrtTwoPI
-
 
 def neg_likelihood(logmix, mean, logstd, y):
   v = logmix + lognormal(y, mean, logstd)
