@@ -17,7 +17,7 @@ class MDNRNN():
             self._build_model(*args, **kargs)
             self.scope = tf.get_variable_scope().name
 
-    def _build_model(self，num_steps,
+    def _build_model(self, num_steps,
                  max_seq_len,
                  input_size,
                  output_size,

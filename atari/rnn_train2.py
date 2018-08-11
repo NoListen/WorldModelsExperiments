@@ -35,8 +35,9 @@ class DataSet(object):
         self.data_mu = raw_data["mu"]
         self.data_logvar = raw_data["logvar"]
         self.data_action =  raw_data["action"]
-        self.max_seq_len = raw_data.shape[1]-1
-        self.n_data = raw_data.shape[0]
+        self.max_seq_len = self.data_action.shape[1]-1
+        print(type(raw_data))
+        self.n_data = self.data_action.shape[0]
         self.ids = np.arange(self.n_data)
         self.i = 0
         np.random.shuffle(self.ids)
@@ -72,15 +73,14 @@ def get_lossfunc(logmix, mean, logstd, y):
     v = tf.reduce_logsumexp(v, 1, keepdims=True)
     return -tf.reduce_mean(v)
 
-def learn(sess, z_size,, data_dir, num_steps,
+def learn(sess, z_size, data_dir, num_steps,
           batch_size=100, rnn_size=256,
           grad_clip=1.0, n_mix=3,
           lr=0.001, min_lr=0.00001, decay=0.99,
           model_dir="tf_rnn", layer_norm=False,
           recurrent_dp = 1.0,
           input_dp = 1.0,
-          output_dp = 1.0
-          )
+          output_dp = 1.0):
 
     check_dir(model_dir)
     configure("%s/%s_rnn" % (model_dir, env_name))
@@ -116,10 +116,11 @@ def learn(sess, z_size,, data_dir, num_steps,
     optimizer = tf.train.AdamOptimizer(tf_lr)
 
     gvs = optimizer.compute_gradients(loss)
-    clip_gvs = [(tf.clip_by_value(grad, -self.hps.grad_clip, self.hps.grad_clip), var) for grad, var in gvs]
+    clip_gvs = [(tf.clip_by_value(grad, -grad_clip, grad_clip), var) for grad, var in gvs]
     # train optimizer
     train_op = optimizer.apply_gradients(clip_gvs, global_step=global_step, name='train_step')
 
+    sess.run(tf.global_variables_initializer())
     curr_lr = lr
     # train loop:
     start = time.time()
@@ -132,14 +133,14 @@ def learn(sess, z_size,, data_dir, num_steps,
       inputs = np.concatenate((raw_z[:, :-1, :], raw_a[:, :-1, :]), axis=2)
       outputs = raw_z[:, 1:, :] # teacher forcing (shift by one predictions)
 
-      feed = {rnn.input_x: inputs, rnn.output_x: outputs, rnn.lr: curr_lr}
-      (train_cost, state, train_step, _) = rnn.sess.run([loss, rnn.final_state, global_step, train_op], feed)
+      feed = {rnn.input_x: inputs, rnn.output_x: outputs, tf_lr: curr_lr}
+      (train_cost, state, train_step, _) = sess.run([loss, rnn.final_state, global_step, train_op], feed)
       if (step%20==0 and step > 0):
         end = time.time()
         time_taken = end-start
         start = time.time()
         log_value("training loss", train_cost, int(step//20))
-        output_log = "step: %d, lr: %.6f, cost: %.4f, train_time_taken: %.4f" % (step, curr_learning_rate, train_cost, time_taken)
+        output_log = "step: %d, lr: %.6f, cost: %.4f, train_time_taken: %.4f" % (step, curr_lr, train_cost, time_taken)
         print(output_log)
 
     saveToFlat(rnn.get_variables(), model_dir+'/final_rnn.p')
@@ -171,3 +172,8 @@ def main():
     config.gpu_options.allow_growth = True
     with tf.Session(config=config) as sess:
         learn(sess, **args)
+
+
+if __name__ == '__main__':
+  main()
+
