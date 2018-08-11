@@ -3,48 +3,31 @@ from collections import namedtuple
 import json
 import tensorflow as tf
 
-# hyperparameters for our model. I was using an older tf version, when HParams was not available ...
-
-# controls whether we concatenate (z, c, h), etc for features used for car.
-MODE_ZCH = 0
-MODE_ZC = 1
-MODE_Z = 2
-MODE_Z_HIDDEN = 3  # extra hidden later
-MODE_ZH = 4
-
-hps_model = default_hps()
-hps_sample = hps_model._replace(batch_size=1, max_seq_len=1, use_recurrent_dropout=0, is_training=0)
-
+# TODO consider controller
+# Now focus on RNN & VAE
+# MODE_ZCH = 0
+# MODE_ZC = 1
+# MODE_ZH = 4
+# MODE_Z = 2
 
 # MDN-RNN model
 class MDNRNN():
     def __init__(self, name, *args, **kargs):
         with tf.variable_scope(name):
-            self._init(*args, **kargs)
+            self._build_model(*args, **kargs)
             self.scope = tf.get_variable_scope().name
 
-    def _init(self, *args， **kargs):
-        self._build_graph(*args, **kargs)
-
-    def _build_graph(self，num_steps,
+    def _build_model(self，num_steps,
                  max_seq_len,
                  input_size,
                  output_size,
                  batch_size,  # minibatch sizes
                  rnn_size=256,  # number of rnn cells
-                 grad_clip=1.0,
                  num_mixture=3,  # number of mixtures in MDN
-                 learning_rate=0.001,
-                 decay_rate=1.0,
-                 min_learning_rate=0.00001,
-                 use_layer_norm=False,
-                 use_recurrent_dropout=False,
-                 recurrent_dropout_prob=0.90,
-                 use_input_dropout=False,
-                 input_dropout_prob=0.90,
-                 use_output_dropout= False,
-                 output_dropout_prob=0.90,
-                 is_training=True):
+                 layer_norm=False,
+                 recurrent_dropout_prob=1.0,
+                 input_dropout_prob=1.0,
+                 output_dropout_prob=1.0):
 
         self.n_mix = num_mixture
         self.input_size = input_size  # 35 channels
@@ -52,24 +35,22 @@ class MDNRNN():
         # TODO apply dynamic RNN
         self.max_seq_len = max_seq_len  # 1000 timesteps
 
-        if is_training:
-            self.global_step = tf.Variable(0, name='global_step', trainable=False)
-
         cell_fn = tf.contrib.rnn.LayerNormBasicLSTMCell  # use LayerNormLSTM
 
-        if use_recurrent_dropout:
-            cell = cell_fn(rnn_size, layer_norm=use_layer_norm, dropout_keep_prob=self.hps.recurrent_dropout_prob)
+        if recurrent_dropout_prob < 1.0:
+            cell = cell_fn(rnn_size, layer_norm=layer_norm, dropout_keep_prob=recurrent_dropout_prob)
         else:
-            cell = cell_fn(rnn_size, layer_norm=use_layer_norm)
+            cell = cell_fn(rnn_size, layer_norm=layer_norm)
 
         # multi-layer, and dropout:
-        print("input dropout mode =", use_input_dropout)
-        print("output dropout mode =", use_output_dropout)
-        print("recurrent dropout mode =", use_recurrent_dropout)
-        if use_input_dropout:
+        print("input dropout mode =", input_dropout_prob < 1.0)
+        print("output dropout mode =", output_dropout_prob < 1.0)
+        print("recurrent dropout mode =", recurrent_dropout_prob < 1.0)
+
+        if input_dropout_prob < 1.0:
             print("applying dropout to input with keep_prob =", input_dropout_prob)
             cell = tf.contrib.rnn.DropoutWrapper(cell, input_keep_prob=input_dropout_prob)
-        if use_output_dropout:
+        if output_dropout_prob < 1.0:
             print("applying dropout to output with keep_prob =", output_dropout_prob)
             cell = tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=output_dropout_prob)
         self.cell = cell
@@ -97,13 +78,6 @@ class MDNRNN():
 
         logSqrtTwoPI = np.log(np.sqrt(2.0 * np.pi))
 
-        def tf_lognormal(y, mean, logstd):
-            return -0.5 * ((y - mean) / tf.exp(logstd)) ** 2 - logstd - logSqrtTwoPI
-
-        def get_lossfunc(logmix, mean, logstd, y):
-            v = logmix + tf_lognormal(y, mean, logstd)
-            v = tf.reduce_logsumexp(v, 1, keepdims=True)
-            return -tf.reduce_mean(v)
 
         def get_mdn_coef(output):
             logmix, mean, logstd = tf.split(output, 3, 1)
@@ -116,23 +90,6 @@ class MDNRNN():
         self.out_mean = out_mean
         self.out_logstd = out_logstd
 
-        # reshape target data so that it is compatible with prediction shape
-        flat_target_data = tf.reshape(self.output_x, [-1, 1])
-
-        lossfunc = get_lossfunc(out_logmix, out_mean, out_logstd, flat_target_data)
-
-        self.cost = tf.reduce_mean(lossfunc)
-
-        if is_training:
-            self.lr = tf.Variable(learning_rate, trainable=False)
-            optimizer = tf.train.AdamOptimizer(self.lr)
-
-            gvs = optimizer.compute_gradients(self.cost)
-            capped_gvs = [(tf.clip_by_value(grad, -grad_clip, grad_clip), var) for grad, var in gvs]
-            self.train_op = optimizer.apply_gradients(capped_gvs, global_step=self.global_step, name='train_step')
-
-        # initialize vars
-        self.init = tf.global_variables_initializer()
 
     # def get_random_model_params(self, stdev=0.5):
     #     # get random params.
@@ -142,6 +99,7 @@ class MDNRNN():
     #         # rparam.append(np.random.randn(*s)*stdev)
     #         rparam.append(np.random.standard_cauchy(s) * stdev)  # spice things up
     #     return rparam
+
     def get_variables(self):
         return tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, self.scope)
 

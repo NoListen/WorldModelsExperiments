@@ -18,7 +18,7 @@ z_size=32
 filelist = os.listdir(DATA_DIR)
 filelist = [f for f in filelist if '.npz' in f]
 
-filename=  random.choice(filelist)
+filename =  random.choice(filelist)
 print("the file name is", filename)
 obs = np.load(os.path.join(DATA_DIR, filename))["obs"]
 obs = np.expand_dims(obs, axis=-1)

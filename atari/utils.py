@@ -67,6 +67,10 @@ def create_vae_dataset(filelist, N=10000, M=1000): # N is 10000 episodes, M is n
 def lognormal(y, mean, logstd):
   return -0.5 * ((y - mean) / np.exp(logstd)) ** 2 - logstd - logSqrtTwoPI
 
+
+def tf_lognormal(y, mean, logstd):
+    return -0.5 * ((y - mean) / tf.exp(logstd)) ** 2 - logstd - logSqrtTwoPI
+
 def neg_likelihood(logmix, mean, logstd, y):
   v = logmix + lognormal(y, mean, logstd)
   v = logsumexp(v, 1, keepdims=True)

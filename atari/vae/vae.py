@@ -21,9 +21,9 @@ class ConvVAE(object):
   def _init(self, z_size=32, batch_size=100):
     self.z_size = z_size
     self.batch_size = batch_size
-    self._build_graph()
+    self._build_model()
 
-  def _build_graph(self):
+  def _build_model(self):
     #self.g = tf.Graph()
     #with self.g.as_default():
 

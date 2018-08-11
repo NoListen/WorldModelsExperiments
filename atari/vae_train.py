@@ -11,9 +11,8 @@ import random
 import numpy as np
 np.set_printoptions(precision=4, edgeitems=6, linewidth=100, suppress=True)
 from vae.vae import ConvVAE
-from utils import reset_graph, create_vae_dataset, check_dir, saveToFlat
+from utils import create_vae_dataset, check_dir, saveToFlat
 import pickle
-from config import env_name
 
 # TODO decide train the VAE and RNN by alternation.
 
