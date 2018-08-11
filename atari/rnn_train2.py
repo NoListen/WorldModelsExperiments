@@ -10,12 +10,26 @@ import tensorflow as tf
 import random
 import time
 
+from tensorboard_logger import configure, log_value
 from vae.vae import ConvVAE, reset_graph
 from rnn.rnn import HyperParams, MDNRNN
+
+from env import make_env
+import argparse
+parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('--env', help='environment ID', default='Pong-v0')
+args = parser.parse_args()
+
+configure("rnn/%s_rnn" % args.env)
+
+# number of actions
+na = make_env(args.env).action_space.n
+print("environment", args.env, "has", na, "discrete actions")
 
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
 np.set_printoptions(precision=4, edgeitems=6, linewidth=100, suppress=True)
 
+z_size = 32
 DATA_DIR = "series"
 model_save_path = "tf_rnn"
 if not os.path.exists(model_save_path):
@@ -34,17 +48,18 @@ def random_batch():
   z = mu + np.exp(logvar/2.0) * np.random.randn(*s)
   return z, action
 
-def default_hps():
+# Not sure
+def default_hps(na, z_size, max_seq_len):
   return HyperParams(num_steps=4000,
-                     max_seq_len=999, # train on sequences of 1000 (so 999 + teacher forcing shift)
-                     input_seq_width=35,    # width of our data (32 + 3 actions)
-                     output_seq_width=32,    # width of our data is 32
+                     max_seq_len=max_seq_len-1, # train on sequences of 1000 (so 999 + teacher forcing shift)
+                     input_seq_width= z_size+na,    # width of our data (32 + 3 actions)
+                     output_seq_width= z_size,    # width of our data is 32
                      rnn_size=256,    # number of rnn cells
                      batch_size=100,   # minibatch sizes
                      grad_clip=1.0,
-                     num_mixture=5,   # number of mixtures in MDN
+                     num_mixture=3,   # number of mixtures in MDN
                      learning_rate=0.001,
-                     decay_rate=1.0,
+                     decay_rate=0.99999,
                      min_learning_rate=0.00001,
                      use_layer_norm=0, # set this to 1 to get more stable results (less chance of NaN), but slower
                      use_recurrent_dropout=0,
@@ -55,8 +70,6 @@ def default_hps():
                      output_dropout_prob=0.90,
                      is_training=1)
 
-hps_model = default_hps()
-hps_sample = hps_model._replace(batch_size=1, max_seq_len=1, use_recurrent_dropout=0, is_training=0)
 
 raw_data = np.load(os.path.join(DATA_DIR, "series.npz"))
 
@@ -64,7 +77,11 @@ raw_data = np.load(os.path.join(DATA_DIR, "series.npz"))
 data_mu = raw_data["mu"]
 data_logvar = raw_data["logvar"]
 data_action =  raw_data["action"]
-max_seq_len = hps_model.max_seq_len
+max_seq_len = data_action.shape[1]
+
+print("na:", na, "z_size:", z_size, "max_seq_len:", max_seq_len)
+hps_model = default_hps(na, z_size, max_seq_len)
+hps_sample = hps_model._replace(batch_size=1, max_seq_len=1, use_recurrent_dropout=0, is_training=0)
 
 N_data = len(data_mu) # should be 10k
 batch_size = hps_model.batch_size
@@ -87,6 +104,7 @@ for local_step in range(hps.num_steps):
   curr_learning_rate = (hps.learning_rate-hps.min_learning_rate) * (hps.decay_rate) ** step + hps.min_learning_rate
 
   raw_z, raw_a = random_batch()
+  #print("raw z shape", raw_z.shape, "raw a shape", raw_a.shape)
   inputs = np.concatenate((raw_z[:, :-1, :], raw_a[:, :-1, :]), axis=2)
   outputs = raw_z[:, 1:, :] # teacher forcing (shift by one predictions)
 
@@ -96,6 +114,7 @@ for local_step in range(hps.num_steps):
     end = time.time()
     time_taken = end-start
     start = time.time()
+    log_value("training loss", train_cost, int(step//20))
     output_log = "step: %d, lr: %.6f, cost: %.4f, train_time_taken: %.4f" % (step, curr_learning_rate, train_cost, time_taken)
     print(output_log)
 
