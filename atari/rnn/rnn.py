@@ -12,8 +12,10 @@ import tensorflow as tf
 
 # MDN-RNN model
 class MDNRNN():
-    def __init__(self, name, *args, **kargs):
-        with tf.variable_scope(name):
+    def __init__(self, name, reuse, *args, **kargs):
+        with tf.variable_scope(name) as scope:
+            if reuse:
+                scope.reuse_variables()
             self._build_model(*args, **kargs)
             self.scope = tf.get_variable_scope().name
 

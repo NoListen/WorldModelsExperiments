@@ -51,14 +51,17 @@ def learn(sess,z_size, batch_size, lr, kl_tolerance,
                 z_size=z_size,
                 batch_size=batch_size)
 
+  x = tf.placeholder(tf.float32, shape=[None, 64, 64, 1], name="x")
+  z = vae.build_encoder(x)
+  y = vae.build_decoder(z)
+
   var_list = vae.get_variables()
 
   global_step = tf.Variable(0, name='global_step', trainable=False)
-  # lr = tf.Variable(lr, name='learning_rate', trainable=False) # replace here
 
   # reconstruction loss
-  tf_r_loss = -tf.reduce_sum(vae.x * tf.log(vae.y+1e-8) +
-                                      (1.-vae.x) * (tf.log(1.-vae.y+1e-8)),[1,2,3])
+  tf_r_loss = -tf.reduce_sum(x * tf.log(y+1e-8) +
+                                      (1.-x) * (tf.log(1.-y+1e-8)),[1,2,3])
   tf_r_loss = tf.reduce_mean(tf_r_loss)
   tf_kl_loss = - 0.5 * tf.reduce_sum(
     (1 + vae.logvar - tf.square(vae.mu) - tf.exp(vae.logvar)),
@@ -84,7 +87,7 @@ def learn(sess,z_size, batch_size, lr, kl_tolerance,
       batch = dataset[batch_id]
 
       obs = batch.astype(np.float)/255.0
-      feed = {vae.x: obs}
+      feed = {x: obs}
 
       (train_loss, r_loss, kl_loss, train_step, _) = sess.run([
         tf_loss, tf_r_loss, tf_kl_loss, global_step, train_op

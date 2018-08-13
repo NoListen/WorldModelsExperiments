@@ -5,16 +5,12 @@ also save 1000 initial mu and logvar, for generative experiments (not related to
 
 import numpy as np
 import os
-import json
 import tensorflow as tf
-import random
 import time
-
 from tensorboard_logger import configure, log_value
 from rnn.rnn import MDNRNN
 from utils import saveToFlat, check_dir, tf_lognormal
 from config import env_name
-
 from env import make_env
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
