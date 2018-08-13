@@ -41,7 +41,7 @@ class ConvVAE(object):
         # VAE
         self.mu = tf.layers.dense(h, self.z_size, name="enc_fc_mu")
         self.logvar = tf.layers.dense(h, self.z_size, name="enc_fc_log_var")
-        sigma = tf.exp(logvar / 2.0)
+        sigma = tf.exp(self.logvar / 2.0)
         epsilon = tf.random_normal([self.batch_size, self.z_size])
         z = self.mu + sigma * epsilon
         return z
