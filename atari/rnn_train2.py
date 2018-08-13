@@ -89,7 +89,6 @@ def learn(sess, z_size, data_dir, num_steps,
     dataset = DataSet(os.path.join(data_dir, "series.npz"))
 
     rnn = MDNRNN("rnn",
-                 num_steps,
                  dataset.max_seq_len,
                  input_size,
                  output_size,
@@ -101,11 +100,15 @@ def learn(sess, z_size, data_dir, num_steps,
                  input_dp,
                  output_dp)
 
+    input_x = tf.placeholder(dtype=tf.float32, shape=[batch_size, dataset.max_seq_len, input_size])
+    output_x = tf.placeholder(dtype=tf.float32, shape=[batch_size, dataset.max_seq_len, input_size])
 
+    out_logmix, out_mean, out_logstd, initial_state, final_state = rnn.buildmodel(input_x)
     # TODO Define Loss and other optimization stuff.
     global_step = tf.Variable(0, name='global_step', trainable=False)
-    flat_target = tf.reshape(rnn.output_x, [-1, 1])
-    loss = get_lossfunc(rnn.out_logmix, rnn.out_mean, rnn.out_logstd, flat_target)
+    flat_target = tf.reshape(output_x, [-1, 1])
+
+    loss = get_lossfunc(out_logmix, out_mean, out_logstd, flat_target)
     loss = tf.reduce_mean(loss)
 
     tf_lr = tf.Variable(lr, trainable=False)
@@ -129,8 +132,8 @@ def learn(sess, z_size, data_dir, num_steps,
       inputs = np.concatenate((raw_z[:, :-1, :], raw_a[:, :-1, :]), axis=2)
       outputs = raw_z[:, 1:, :] # teacher forcing (shift by one predictions)
 
-      feed = {rnn.input_x: inputs, rnn.output_x: outputs, tf_lr: curr_lr}
-      (train_cost, state, train_step, _) = sess.run([loss, rnn.final_state, global_step, train_op], feed)
+      feed = {input_x: inputs, output_x: outputs, tf_lr: curr_lr}
+      (train_cost, state, train_step, _) = sess.run([loss, final_state, global_step, train_op], feed)
       if (step%20==0 and step > 0):
         end = time.time()
         time_taken = end-start

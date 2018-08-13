@@ -17,11 +17,19 @@ class ConvVAE(object):
     self.name = name
     self.z_size= 32
     self.batch_size = 100
-    with tf.variable_scope(name) as scope:
+
+    # initialized
+    with tf.variable_scope(name):
       self.scope = tf.get_variable_scope().name
+
+  # Maybe
+  # def update_scope(self):
+  #   with tf.variable_scope(self.name):
+  #     self.scope = tf.get_variable_scope().name
 
   # more like a call function
   def build_encoder(self, x, reuse=False):
+    # it should be called in the scope where the instance is created.
     with tf.variable_scope(self.name):
       with tf.variable_scope("encoder", reuse=reuse):
         h = tf.layers.conv2d(x, 32, 4, strides=2, activation=tf.nn.relu, name="enc_conv1")

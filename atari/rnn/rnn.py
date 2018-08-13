@@ -12,14 +12,7 @@ import tensorflow as tf
 
 # MDN-RNN model
 class MDNRNN():
-    def __init__(self, name, reuse, *args, **kargs):
-        with tf.variable_scope(name) as scope:
-            if reuse:
-                scope.reuse_variables()
-            self._build_model(*args, **kargs)
-            self.scope = tf.get_variable_scope().name
-
-    def _build_model(self, num_steps,
+    def __init__(self, name,
                  max_seq_len,
                  input_size,
                  output_size,
@@ -31,66 +24,67 @@ class MDNRNN():
                  input_dropout_prob=1.0,
                  output_dropout_prob=1.0):
 
+        # these parameters determine the architecutre of RNN
+        self.name = name
+        self.max_seq_len = max_seq_len
+        self.input_size = input_size
+        self.output_size = output_size
+        self.batch_size = batch_size
+        self.rnn_size = rnn_size
         self.n_mix = num_mixture
-        self.input_size = input_size  # 35 channels
-        self.output_size = output_size  # 32 channels
-        # TODO apply dynamic RNN
-        self.max_seq_len = max_seq_len  # 1000 timesteps
+        self.layer_norm = layer_norm
+        self.recurrent_dp = recurrent_dropout_prob
+        self.input_dp = input_dropout_prob
+        self.output_dp = output_dropout_prob
 
-        cell_fn = tf.contrib.rnn.LayerNormBasicLSTMCell  # use LayerNormLSTM
-
-        if recurrent_dropout_prob < 1.0:
-            cell = cell_fn(rnn_size, layer_norm=layer_norm, dropout_keep_prob=recurrent_dropout_prob)
-        else:
-            cell = cell_fn(rnn_size, layer_norm=layer_norm)
-
-        # multi-layer, and dropout:
         print("input dropout mode =", input_dropout_prob < 1.0)
         print("output dropout mode =", output_dropout_prob < 1.0)
         print("recurrent dropout mode =", recurrent_dropout_prob < 1.0)
 
-        if input_dropout_prob < 1.0:
-            print("applying dropout to input with keep_prob =", input_dropout_prob)
-            cell = tf.contrib.rnn.DropoutWrapper(cell, input_keep_prob=input_dropout_prob)
-        if output_dropout_prob < 1.0:
-            print("applying dropout to output with keep_prob =", output_dropout_prob)
-            cell = tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=output_dropout_prob)
-        self.cell = cell
+        with tf.variable_scope(name):
+            self.scope = tf.get_variable_scope().name
 
-        self.input_x = tf.placeholder(dtype=tf.float32, shape=[batch_size, max_seq_len, input_size])
-        self.output_x = tf.placeholder(dtype=tf.float32, shape=[batch_size, max_seq_len, output_size])
+    def build_model(self, input_x, reuse=False):
+        with tf.variable_scope(self.name, reuse=reuse)
+            cell_fn = tf.contrib.rnn.LayerNormBasicLSTMCell  # use LayerNormLSTM
 
-        actual_input_x = self.input_x
-        self.initial_state = cell.zero_state(batch_size=batch_size, dtype=tf.float32)
+            if self.recurrent_dropout_prob < 1.0:
+                cell = cell_fn(rnn_size, layer_norm=self.layer_norm,
+                               dropout_keep_prob=self.recurrent_dp)
+            else:
+                cell = cell_fn(rnn_size, layer_norm=self.layer_norm)
 
-        # the output size
-        n_out = output_size * num_mixture * 3
+            if self.input_dp < 1.0:
+                print("applying dropout to input with keep_prob =", self.input_dp)
+                cell = tf.contrib.rnn.DropoutWrapper(cell, input_keep_prob=self.input_dp)
 
-        with tf.variable_scope('RNN'):
+            if self.output_dp < 1.0:
+                print("applying dropout to output with keep_prob =", self.output_dp)
+                cell = tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=self.output_dp)
+
+            initial_state = cell.zero_state(batch_size=batch_size, dtype=tf.float32)
+            n_out = self.output_size * self.num_mixture * 3
+
             output_w = tf.get_variable("output_w", [rnn_size, n_out])
             output_b = tf.get_variable("output_b", [n_out])
 
-        output, last_state = tf.nn.dynamic_rnn(cell, actual_input_x, initial_state=self.initial_state,
-                                               time_major=False, swap_memory=True, dtype=tf.float32, scope="RNN")
+            output, last_state = tf.nn.dynamic_rnn(cell, input_x, initial_state=initial_state,
+                                                   time_major=False, swap_memory=True,
+                                                   dtype=tf.float32, scope="RNN")
 
-        output = tf.reshape(output, [-1, rnn_size])
-        output = tf.nn.xw_plus_b(output, output_w, output_b)
-        output = tf.reshape(output, [-1, num_mixture * 3]) # mean std weight
-        self.final_state = last_state
+            output = tf.reshape(output, [-1, self.rnn_size])
+            output = tf.nn.xw_plus_b(output, output_w, output_b)
+            output = tf.reshape(output, [-1, num_mixture * 3]) # mean std weight
+            final_state = last_state
 
-        logSqrtTwoPI = np.log(np.sqrt(2.0 * np.pi))
+            def get_mdn_coef(output):
+                logmix, mean, logstd = tf.split(output, 3, 1)
+                logmix = logmix - tf.reduce_logsumexp(logmix, 1, keepdims=True)
+                return logmix, mean, logstd
 
+            out_logmix, out_mean, out_logstd = get_mdn_coef(output)
 
-        def get_mdn_coef(output):
-            logmix, mean, logstd = tf.split(output, 3, 1)
-            logmix = logmix - tf.reduce_logsumexp(logmix, 1, keepdims=True)
-            return logmix, mean, logstd
-
-        out_logmix, out_mean, out_logstd = get_mdn_coef(output)
-
-        self.out_logmix = out_logmix
-        self.out_mean = out_mean
-        self.out_logstd = out_logstd
+            return out_logmix, out_mean, out_logstd, initial_state, final_state
 
 
     # def get_random_model_params(self, stdev=0.5):

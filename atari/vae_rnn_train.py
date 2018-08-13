@@ -95,7 +95,6 @@ def learn(sess, z_size, data_dir, num_steps, max_seq_len,
                  input_dp,
                  output_dp)
 
-
     # TODO create the dataset class.
     dataset = DataSet(max_seq_len+4, na, data_dir)
 
