@@ -101,10 +101,11 @@ def learn(sess, z_size, data_dir, num_steps,
                  output_dp)
 
     input_x = tf.placeholder(dtype=tf.float32, shape=[batch_size, dataset.max_seq_len, input_size])
-    output_x = tf.placeholder(dtype=tf.float32, shape=[batch_size, dataset.max_seq_len, input_size])
+    output_x = tf.placeholder(dtype=tf.float32, shape=[batch_size, dataset.max_seq_len, output_size])
 
-    out_logmix, out_mean, out_logstd, initial_state, final_state = rnn.buildmodel(input_x)
+    out_logmix, out_mean, out_logstd, initial_state, final_state = rnn.build_model(input_x)
     # TODO Define Loss and other optimization stuff.
+    print("Hello, we are going to ", output_x.shape, out_mean.shape)
     global_step = tf.Variable(0, name='global_step', trainable=False)
     flat_target = tf.reshape(output_x, [-1, 1])
 
