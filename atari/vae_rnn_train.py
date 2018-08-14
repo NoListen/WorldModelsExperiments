@@ -169,7 +169,7 @@ def learn(sess, z_size, data_dir, num_steps, max_seq_len,
     flat_target = tf.reshape(output_x[:, 4:, :], [-1, 1])
 
     out_logmix_with_vae, out_mean_with_vae, out_logstd_with_vae, \
-        initial_state_with_vae, final_state_with_vae = rnn.buildmodel(input_x)
+        initial_state_with_vae, final_state_with_vae = rnn.buildmodel(input_x, reuse=True)
     rnn_loss2 = get_lossfunc(out_logmix_with_vae[4:, :], out_mean_with_vae[4:, :],
                              out_logstd_with_vae[4:, :], flat_target)
     rnn_opt2 = tf.train.AdamOptimizer(tf_lr)
