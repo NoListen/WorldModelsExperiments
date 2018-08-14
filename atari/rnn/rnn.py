@@ -45,14 +45,14 @@ class MDNRNN():
             self.scope = tf.get_variable_scope().name
 
     def build_model(self, input_x, reuse=False):
-        with tf.variable_scope(self.name, reuse=reuse)
+        with tf.variable_scope(self.name, reuse=reuse):
             cell_fn = tf.contrib.rnn.LayerNormBasicLSTMCell  # use LayerNormLSTM
 
-            if self.recurrent_dropout_prob < 1.0:
-                cell = cell_fn(rnn_size, layer_norm=self.layer_norm,
+            if self.recurrent_dp < 1.0:
+                cell = cell_fn(self.rnn_size, layer_norm=self.layer_norm,
                                dropout_keep_prob=self.recurrent_dp)
             else:
-                cell = cell_fn(rnn_size, layer_norm=self.layer_norm)
+                cell = cell_fn(self.rnn_size, layer_norm=self.layer_norm)
 
             if self.input_dp < 1.0:
                 print("applying dropout to input with keep_prob =", self.input_dp)
@@ -62,10 +62,10 @@ class MDNRNN():
                 print("applying dropout to output with keep_prob =", self.output_dp)
                 cell = tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=self.output_dp)
 
-            initial_state = cell.zero_state(batch_size=batch_size, dtype=tf.float32)
-            n_out = self.output_size * self.num_mixture * 3
+            initial_state = cell.zero_state(batch_size=self.batch_size, dtype=tf.float32)
+            n_out = self.output_size * self.n_mix * 3
 
-            output_w = tf.get_variable("output_w", [rnn_size, n_out])
+            output_w = tf.get_variable("output_w", [self.rnn_size, n_out])
             output_b = tf.get_variable("output_b", [n_out])
 
             output, last_state = tf.nn.dynamic_rnn(cell, input_x, initial_state=initial_state,
@@ -74,7 +74,7 @@ class MDNRNN():
 
             output = tf.reshape(output, [-1, self.rnn_size])
             output = tf.nn.xw_plus_b(output, output_w, output_b)
-            output = tf.reshape(output, [-1, num_mixture * 3]) # mean std weight
+            output = tf.reshape(output, [-1, self.n_mix * 3]) # mean std weight
             final_state = last_state
 
             def get_mdn_coef(output):

@@ -46,7 +46,7 @@ class ConvVAE(object):
         z = self.mu + sigma * epsilon
         return z
 
-  def build_decoder(self, z):
+  def build_decoder(self, z, reuse=False):
     with tf.variable_scope(self.name):
       with tf.variable_scope("decoder", reuse=reuse):
         h = tf.layers.dense(z, 4*256, name="dec_fc")
