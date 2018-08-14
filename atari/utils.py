@@ -71,6 +71,11 @@ def lognormal(y, mean, logstd):
 def tf_lognormal(y, mean, logstd):
     return -0.5 * ((y - mean) / tf.exp(logstd)) ** 2 - logstd - logSqrtTwoPI
 
+def get_lossfunc(logmix, mean, logstd, y):
+    v = logmix + tf_lognormal(y, mean, logstd)
+    v = tf.reduce_logsumexp(v, 1, keepdims=True)
+    return -tf.reduce_mean(v)
+
 def neg_likelihood(logmix, mean, logstd, y):
   v = logmix + lognormal(y, mean, logstd)
   v = logsumexp(v, 1, keepdims=True)

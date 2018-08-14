@@ -9,7 +9,7 @@ import tensorflow as tf
 import time
 from tensorboard_logger import configure, log_value
 from rnn.rnn import MDNRNN
-from utils import saveToFlat, check_dir, tf_lognormal
+from utils import saveToFlat, check_dir, get_lossfunc
 from config import env_name
 from env import make_env
 
@@ -63,11 +63,6 @@ class DataSet(object):
             a = np.concatenate([a, ta], axis=0)
 
         return z, a
-
-def get_lossfunc(logmix, mean, logstd, y):
-    v = logmix + tf_lognormal(y, mean, logstd)
-    v = tf.reduce_logsumexp(v, 1, keepdims=True)
-    return -tf.reduce_mean(v)
 
 def learn(sess, z_size, data_dir, num_steps,
           batch_size=100, rnn_size=256,
