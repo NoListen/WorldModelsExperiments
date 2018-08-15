@@ -16,7 +16,7 @@ class ConvVAE(object):
   def __init__(self, name, z_size=32, batch_size=100):
     self.name = name
     self.z_size= 32
-    self.batch_size = 100
+    self.batch_size = batch_size
 
     # initialized
     with tf.variable_scope(name):

@@ -1,18 +1,35 @@
 import os
 os.environ["CUDA_VISIBLE_DEVICES"]="1" # can just override for multi-gpu systems
 
+import time
 import tensorflow as tf
 import random
 import numpy as np
 np.set_printoptions(precision=4, edgeitems=6, linewidth=100, suppress=True)
 from vae.vae import ConvVAE
+from rnn.rnn import MDNRNN
 from utils import create_vae_dataset, check_dir, saveToFlat, loadFromFlat,\
     onehot_actions, check_dir, get_lossfunc
 from env import make_env
 import os
+from tensorboard_logger import configure, log_value
+from config import env_name
+
+class Clipper(object):
+  def __init__(self, output_size, n_mix, seq_len, start):
+    self.n_mix = n_mix
+    self.p_size = n_mix * output_size
+    self.seq_len = seq_len
+    self.start = start
+
+  def clip(self, o):
+    o = tf.reshape(o, [-1, self.seq_len, self.p_size])
+    o = tf.reshape(o[:, self.start:, :], [-1, self.n_mix])
+    return o
 
 class DataSet(object):
     def __init__(self, seq_len, na, data_dir):
+        self.data_dir = data_dir
         fns = os.listdir(data_dir)
         self.fns = np.array([fn for fn in fns if '.npz' in fn])
         self.seq_len = seq_len
@@ -40,6 +57,9 @@ class DataSet(object):
             np.random.shuffle(self.ids)
             self.i = 0
 
+        obs = np.array(obs)
+        obs = np.expand_dims(obs, axis=-1)/255.
+        a = np.array(a)
         if nb < batch_size:
             # sample the data
             tobs, ta = self.random_batch(batch_size-nb)
@@ -48,7 +68,7 @@ class DataSet(object):
         return obs, a
 
     def load_sample_data(self, fn, seq_len, na):
-        raw_data = np.load(fn)
+        raw_data = np.load(self.data_dir+'/'+fn)
         n = len(raw_data["action"])
         idx = np.random.randint(0, n - seq_len)  # the final one won't be taken
         a = raw_data["action"][idx:idx + seq_len+1] # sample one more.
@@ -60,7 +80,7 @@ class DataSet(object):
 # TODO determine whether joint learning will be better.
 def learn(sess, z_size, data_dir, num_steps, max_seq_len,
           batch_size=32, rnn_size=256,
-          grad_clip=1.0, n_mix=3, vae_lr=0.0001,
+          grad_clip=1.0, n_mix=3, vae_lr=0.0001, kl_tolerance=0.5,
           lr=0.001, min_lr=0.00001, decay=0.99,
           vae_path="tf_vae/final_vae.p",
           model_dir="tf_rnn", layer_norm=False,
@@ -74,13 +94,13 @@ def learn(sess, z_size, data_dir, num_steps, max_seq_len,
     check_dir(model_dir)
     configure("%s/%s_j_rnn" % (model_dir, env_name))
 
-    # build dataset
-    dataset = DataSet(max_seq_len+4, na, data_dir)
-
     # define env
     na = make_env(env_name).action_space.n
     input_size = z_size + na
     output_size = z_size
+
+    # build dataset
+    dataset = DataSet(max_seq_len+4, na, data_dir)
 
     # build vae
     vae = ConvVAE(name="conv_vae",
@@ -100,9 +120,10 @@ def learn(sess, z_size, data_dir, num_steps, max_seq_len,
     tf_kl_loss = tf.reduce_mean(tf.maximum(tf_kl_loss, kl_tolerance * z_size))
     tf_vae_loss = tf_kl_loss + tf_r_loss
 
+    vae_var_list = vae.get_variables()
     # no decay
     vae_opt = tf.train.AdamOptimizer(vae_lr)
-    vae_grads = vae_opt.compute_gradients(tf_vae_loss)  # can potentially clip gradients here.
+    vae_grads = vae_opt.compute_gradients(tf_vae_loss, vae_var_list)  # can potentially clip gradients here.
 
     # option only update part of the gradients.
     # Then I might need to specify those grads.
@@ -129,7 +150,6 @@ def learn(sess, z_size, data_dir, num_steps, max_seq_len,
     output_x = output_z
 
     rnn = MDNRNN("rnn",
-                 num_steps,
                  max_seq_len + 4,  # 4 for the recent frames
                  input_size,
                  output_size,
@@ -141,26 +161,35 @@ def learn(sess, z_size, data_dir, num_steps, max_seq_len,
                  input_dp,
                  output_dp)
 
+    clipper = Clipper(output_size, n_mix, dataset.seq_len, 4)
+
     global_step = tf.Variable(0, name='global_step', trainable=False)
 
     # phase 1
-    out_logmix, out_mean, out_logstd, initial_state, final_state = rnn.buildmodel(input_x)
+    out_logmix, out_mean, out_logstd, initial_state, final_state = rnn.build_model(input_x)
+
+    out_logmix = clipper.clip(out_logmix)
+    out_mean = clipper.clip(out_mean)
+    out_logstd = clipper.clip(out_logstd)
+
 
     flat_target = tf.reshape(output_x[:, 4:, :], [-1, 1])
 
-    rnn_loss1 = get_lossfunc(out_logmix[4:, :], out_mean[4:, :], out_logstd[4:, :], flat_target)
+    rnn_loss1 = get_lossfunc(out_logmix, out_mean, out_logstd, flat_target)
     rnn_loss1 = tf.reduce_mean(rnn_loss1)
 
-    tf_lr = tf.Variable(lr, trainable=False)
-    rnn_opt1 = tf.train.AdamOptimizer(tf_lr)
 
-    gvs = rnn_opt1.compute_gradients(rnn_loss1)
+    rnn_var_list = rnn.get_variables()
+    tf_lr = tf.Variable(lr, trainable=False)
+    rnn_opt1 = tf.train.AdamOptimizer(tf_lr, name="warmup")
+
+    gvs = rnn_opt1.compute_gradients(rnn_loss1, rnn_var_list)
     clip_gvs = [(tf.clip_by_value(grad, -grad_clip, grad_clip), var) for grad, var in gvs]
     # train optimizer
     rnn_train_op1 = rnn_opt1.apply_gradients(clip_gvs, global_step=global_step, name='rnn_op2')
 
     # phase 2
-    rnn_z_with_vae = z.reshape((batch_size, dataset.seq_len+1, z_size))
+    rnn_z_with_vae = tf.reshape(z, (batch_size, dataset.seq_len+1, z_size))
     # overwrite
     input_z = rnn_z_with_vae[:, :-1, :]
     output_z = tf.stop_gradient(rnn_z_with_vae[:, 1:, :])
@@ -169,16 +198,24 @@ def learn(sess, z_size, data_dir, num_steps, max_seq_len,
     flat_target = tf.reshape(output_x[:, 4:, :], [-1, 1])
 
     out_logmix_with_vae, out_mean_with_vae, out_logstd_with_vae, \
-        initial_state_with_vae, final_state_with_vae = rnn.buildmodel(input_x, reuse=True)
-    rnn_loss2 = get_lossfunc(out_logmix_with_vae[4:, :], out_mean_with_vae[4:, :],
-                             out_logstd_with_vae[4:, :], flat_target)
-    rnn_opt2 = tf.train.AdamOptimizer(tf_lr)
+        initial_state_with_vae, final_state_with_vae = rnn.build_model(input_x, reuse=True)
+
+    out_logmix_with_vae = clipper.clip(out_logmix_with_vae)
+    out_mean_with_vae = clipper.clip(out_mean_with_vae)
+    out_logstd_with_vae = clipper.clip(out_logstd_with_vae)
+
+    rnn_loss2 = get_lossfunc(out_logmix_with_vae, out_mean_with_vae,
+                             out_logstd_with_vae, flat_target)
+    rnn_opt2 = tf.train.AdamOptimizer(tf_lr, name="joint")
+    vae_opt2 = tf.train.AdamOptimizer(vae_lr, name="vae_joint")
     # overwrite
-    gvs = rnn_opt2.compute_gradients(rnn_loss2)
-    clip_gvs = [(tf.clip_by_value(grad, -grad_clip, grad_clip), var) for grad, var in gvs]
+    gvs = rnn_opt2.compute_gradients(rnn_loss2, rnn_var_list)
+    clip_gvs = [(tf.clip_by_value(grad, -grad_clip, grad_clip), var) for grad, var in gvs if grad is not None]
     # train optimizer
     rnn_train_op2 = rnn_opt2.apply_gradients(clip_gvs, global_step=global_step, name='rnn_op2')
 
+    gvs = vae_opt2.compute_gradients(rnn_loss2, vae_var_list)
+    vae_train_op2 = vae_opt2.apply_gradients(gvs, name="vae_op2")
 
     sess.run(tf.global_variables_initializer())
     curr_lr = lr
@@ -189,8 +226,7 @@ def learn(sess, z_size, data_dir, num_steps, max_seq_len,
 
     # initialize and load the model
     sess.run(tf.global_variables_initializer())
-    loadFromFlat(vae.get_variables(), vae_path)
-
+    loadFromFlat(vae_var_list, vae_path)
 
     # TODO  the learning process is divided into two parts
     # 1. learn from series -> normally ( randomly clip the sequence )
@@ -211,7 +247,7 @@ def learn(sess, z_size, data_dir, num_steps, max_seq_len,
         raw_obs, raw_a = dataset.random_batch(batch_size)
         raw_obs = raw_obs.reshape((-1,) + raw_obs.shape[2:])
         # the grads won't be back propagated
-        raw_z = sess.run(z, feed={x: raw_obs})
+        raw_z = sess.run(z, feed_dict={x: raw_obs})
         raw_z = raw_z.reshape((batch_size, dataset.seq_len+1, z_size))
 
         feed = {rnn_z: raw_z, tf_a: raw_a, tf_lr: curr_lr}
@@ -244,8 +280,8 @@ def learn(sess, z_size, data_dir, num_steps, max_seq_len,
         # vae_train_cost, _ = sess.run([tf_vae_loss, vae_train_op], feed={x: raw_obs})
 
         # joint training
-        (train_cost, train_step, _, vae_train_cost, _) = sess.run([rnn_loss2, global_step, rnn_train_op2,
-                                                                   tf_vae_loss, vae_train_op], feed)
+        (train_cost, train_step, _, vae_train_cost, _, _) = sess.run([rnn_loss2, global_step, rnn_train_op2,
+                                                                   tf_vae_loss, vae_train_op, vae_train_op2], feed)
 
         if (step % 20 == 0 and step > 0):
             end = time.time()
@@ -256,7 +292,7 @@ def learn(sess, z_size, data_dir, num_steps, max_seq_len,
                 step, curr_lr, train_cost, vae_train_cost, time_taken)
             print(output_log)
 
-    saveToFlat(rnn.get_variables(), model_dir + '/final_rnn.p')
+    saveToFlat(rnn_var_list, model_dir + '/final_rnn.p')
 
 
 def main():
@@ -278,6 +314,8 @@ def main():
     # Transfer the data directly
     parser.add_argument('--vae-lr', type=int,default=0.0001, help="the learning rate of vae")
     parser.add_argument('--vae-path', default="tf_vae/final_vae.p", help="the vae model to load")
+    parser.add_argument('--kl-tolerance', type=float, default=0.5, help="kl tolerance")
+
     parser.add_argument('--model-dir', default="tf_rnn", help="the directory to store rnn model")
     parser.add_argument('--layer-norm', action="store_true", default=False, help="layer norm in RNN")
     parser.add_argument('--recurrent-dp', type=float, default=1.0, help="dropout ratio in recurrent")

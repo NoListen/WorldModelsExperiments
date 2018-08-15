@@ -2,7 +2,6 @@
 train mdn-rnn from pre-processed data.
 also save 1000 initial mu and logvar, for generative experiments (not related to training).
 '''
-
 import numpy as np
 import os
 import tensorflow as tf
@@ -106,6 +105,7 @@ def learn(sess, z_size, data_dir, num_steps,
 
     loss = get_lossfunc(out_logmix, out_mean, out_logstd, flat_target)
     loss = tf.reduce_mean(loss)
+    var_list = rnn.get_variables()
 
     tf_lr = tf.Variable(lr, trainable=False)
     optimizer = tf.train.AdamOptimizer(tf_lr)
@@ -138,7 +138,7 @@ def learn(sess, z_size, data_dir, num_steps,
         output_log = "step: %d, lr: %.6f, cost: %.4f, train_time_taken: %.4f" % (step, curr_lr, train_cost, time_taken)
         print(output_log)
 
-    saveToFlat(rnn.get_variables(), model_dir+'/final_rnn.p')
+    saveToFlat(var_list, model_dir+'/final_rnn.p')
 
 
 
