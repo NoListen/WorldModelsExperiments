@@ -10,6 +10,21 @@ import tensorflow as tf
 # MODE_ZH = 4
 # MODE_Z = 2
 
+class VariantRNNCell(tf.contrib.rnn.LayerNormBasicLSTMCell):
+    def __init__(self, var_dict, *args, **kargs):
+        super(VariantRNNCell, self).__init__(*args, **kargs)
+        self.var_dict = var_dict
+        # just reuse the layer_norm
+        # but get a different kernel.
+
+    def _linear(self, args):
+        weights = self.var_dict['kernel']
+        out = math_ops.matmul(args, weights)
+        if not self._layer_norm:
+            bias = self.var_dict['bias']
+            out = nn_ops.bias_add(out, bias)
+        return out
+
 # MDN-RNN model
 class MDNRNN():
     def __init__(self, name,
@@ -62,6 +77,30 @@ class MDNRNN():
                 print("applying dropout to output with keep_prob =", self.output_dp)
                 cell = tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=self.output_dp)
 
+            return self.build_base_model(cell, input_x)
+
+    def build_variant_model(self, input_x, weight_dict, reuse=False):
+        with tf.variable_scope(self.name, reuse=reuse):
+            cell_fn = VariantRNNCell  # use LayerNormLSTM
+
+            if self.recurrent_dp < 1.0:
+                cell = cell_fn(weight_dict, self.rnn_size, layer_norm=self.layer_norm,
+                               dropout_keep_prob=self.recurrent_dp)
+            else:
+                cell = cell_fn(weight_dict, self.rnn_size, layer_norm=self.layer_norm)
+
+            if self.input_dp < 1.0:
+                print("applying dropout to input with keep_prob =", self.input_dp)
+                cell = tf.contrib.rnn.DropoutWrapper(cell, input_keep_prob=self.input_dp)
+
+            if self.output_dp < 1.0:
+                print("applying dropout to output with keep_prob =", self.output_dp)
+                cell = tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=self.output_dp)
+
+            return self.build_base_model(cell, input_x)
+
+    def build_base_model(self, cell, input_x):
+
             initial_state = cell.zero_state(batch_size=self.batch_size, dtype=tf.float32)
             n_out = self.output_size * self.n_mix * 3
 
@@ -95,6 +134,20 @@ class MDNRNN():
     #         # rparam.append(np.random.randn(*s)*stdev)
     #         rparam.append(np.random.standard_cauchy(s) * stdev)  # spice things up
     #     return rparam
+    def get_linear_variables(self):
+        # return a dictionary
+        lv_dict = {}
+        v_list = self.get_variables()
+        for var in v_list:
+            v_type = var.name.split('/')[-1].split(':')[0]
+            if v_type == "kernel":
+                lv_dict["kernel"] = var
+            elif v_type == "bias":
+                lv_dict["bias"] = var
+            else:
+                continue
+            print(var.name, "has been added to linear variables")
+        return lv_dict
 
     def get_variables(self):
         return tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, self.scope)

@@ -60,6 +60,9 @@ class ConvVAE(object):
   def get_variables(self):
     return tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, self.scope)
 
+  def get_fc_variables(self):
+    return [v for v in self.get_variables() if 'fc' in v.name]
+
   def get_trainable_variables(self):
     return tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, self.scope)
 
