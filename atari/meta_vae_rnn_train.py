@@ -1,6 +1,6 @@
 import os
 from collections import namedtuple
-os.environ["CUDA_VISIBLE_DEVICES"]="1" # can just override for multi-gpu systems
+#os.environ["CUDA_VISIBLE_DEVICES"]="2" # can just override for multi-gpu systems
 
 import time
 import tensorflow as tf
@@ -37,7 +37,7 @@ class Clipper(object):
 class DataSet(object):
     def __init__(self, seq_len, na, data_dir, fns):
         self.data_dir = data_dir
-        self.fns = fns
+        self.fns = np.array(fns)
         self.seq_len = seq_len
         self.na = na
         self.n = len(self.fns)
@@ -106,10 +106,10 @@ class DatasetManager(object):
 
 # TODO Option 1 update VAE in meta-learning phase.
 # (Processing...) Option 2 update VAE seperately. (This can also work but without update RNN.)
-def build_vae(name, vae, z_size, vae_lr, kl_tolerance):
+def build_vae(name, vae, na, z_size, seq_len, vae_lr, kl_tolerance):
     # used for later input tnesor
-    a = tf.placeholder(tf.float32, shape=[None, dataset.seq_len + 1, na], name=name+"_a")
-    ma = tf.placeholder(tf.float32, shape=[None, dataset.seq_len + 1, na], name=name+"_ma")
+    a = tf.placeholder(tf.float32, shape=[None, seq_len + 1, na], name=name+"_a")
+    ma = tf.placeholder(tf.float32, shape=[None, seq_len + 1, na], name=name+"_ma")
 
     x = tf.placeholder(tf.float32, shape=[None, 64, 64, 1], name=name+"_x")
     mx = tf.placeholder(tf.float32, shape=[None, 64, 64, 1], name=name+"_mx")
@@ -143,16 +143,17 @@ def build_vae(name, vae, z_size, vae_lr, kl_tolerance):
                         train_op=vae_train_op)
     return vae_comp
 
-def build_rnn(name, rnn, na, batch_size, global_step, clipper, rnn_lr, grad_clip):
-    a = tf.placeholder(tf.float32, shape=[None, dataset.seq_len + 1, na], name=name+"_a")
-    rnn_z = tf.placeholder(dtype=tf.float32, shape=[batch_size, dataset.seq_len + 1, z_size], name=name+"_z")
+def build_rnn(name, rnn, na, z_size, batch_size, seq_len, global_step, clipper, rnn_lr, grad_clip):
+    a = tf.placeholder(tf.float32, shape=[None, seq_len + 1, na], name=name+"_a")
+    rnn_z = tf.placeholder(dtype=tf.float32, shape=[batch_size, seq_len + 1, z_size], name=name+"_z")
 
     input_z = rnn_z[:, :-1, :]
     output_z = rnn_z[:, 1:, :]
     input_x = tf.concat([input_z, a[:, :-1, :]], axis=2)
     output_x = output_z
+    print(input_x.shape, "Am I not a sequence?")
 
-    out_logmix, out_mean, out_logstd, initial_state, final_state = rnn.build_model(input_x)
+    out_logmix, out_mean, out_logstd, _ = rnn.build_model(input_x)
 
     out_logmix = clipper.clip(out_logmix)
     out_mean = clipper.clip(out_mean)
@@ -164,7 +165,7 @@ def build_rnn(name, rnn, na, batch_size, global_step, clipper, rnn_lr, grad_clip
     rnn_loss = tf.reduce_mean(rnn_loss)
 
     rnn_var_list = rnn.get_variables()
-    rnn_opt = tf.train.AdamOptimizer(rnn_lr, name=name+"warmup")
+    rnn_opt = tf.train.AdamOptimizer(rnn_lr, name=name+"_Adam_warmup")
 
     gvs = rnn_opt.compute_gradients(rnn_loss, rnn_var_list)
     clip_gvs = [(tf.clip_by_value(grad, -grad_clip, grad_clip), var) for grad, var in gvs]
@@ -202,18 +203,18 @@ def build_rnn_with_vae(rnn, rnn_lv_dict, comp, z_size, seq_len, batch_size,
     input_x, flat_target = process_z_with_vae(comp.z, comp.a, batch_size, seq_len, z_size)
     input_mx, flat_mtarget = process_z_with_vae(comp.mz, comp.ma, batch_size, seq_len, z_size)
 
-    logmix, mean, logstd, _, _ = rnn.build_variant_model(input_x, rnn_lv_dict, reuse=True)
+    logmix, mean, logstd, _ = rnn.build_variant_model(input_x, rnn_lv_dict, reuse=True)
     logmix, mean, logstd = clip(logmix, mean, logstd, clipper)
     rnn_loss = get_lossfunc(logmix, mean, logstd, flat_target)
 
-    grads = tf.stop_gradient(rnn_loss, rnn_lv_dict.values())
+    grads = tf.gradients(rnn_loss, list(rnn_lv_dict.values()))
     grads = dict(zip(rnn_lv_dict.keys(), grads))
     for k in rnn_lv_dict.keys():
         rnn_lv_dict[k] = rnn_lv_dict[k] - rnn_lr * grads[k]
 
-    meta_logmix, meta_mean, meta_logstd, _, _ = rnn.build_variant_model(input_mx, rnn_lv_dict, reuse=True)
+    meta_logmix, meta_mean, meta_logstd, _ = rnn.build_variant_model(input_mx, rnn_lv_dict, reuse=True)
     meta_logmix, meta_mean, meta_logstd = clip(meta_logmix, meta_mean, meta_logstd, clipper)
-    rnn_meta_loss = get_lossfunc(meta_logmix, meta_mean, meta_logstd)
+    rnn_meta_loss = get_lossfunc(meta_logmix, meta_mean, meta_logstd, flat_mtarget)
 
 
 
@@ -240,7 +241,7 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
           recurrent_dp = 1.0,
           input_dp = 1.0,
           output_dp = 1.0):
-
+    print("FOO,", vae_lr)
     # TODO remove this limit.
     batch_size = batch_size_per_task * n_tasks
 
@@ -269,21 +270,28 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
 
     datasets = [dataset1, DatasetTransposeWrapper(dataset2)]
     dm = DatasetManager(datasets) # sample from this one.
-    seq_len = dataset.seq_len
+    seq_len = dataset1.seq_len
 
     print("The datasets has been created")
 
 
     vaes = []
     vae_comps = []
-    for i in range(num_tasks):
-        vae = ConvVAE(name="vae%i",
+    for i in range(n_tasks):
+        vae = ConvVAE(name="vae%i" % i,
                       z_size=z_size,
                       batch_size=(seq_len + 1) * batch_size_per_task)
-        vae_comp = build_vae("vae%i" % i, vae, z_size, vae_lr, kl_tolerance)
+        vae_comp = build_vae("vae%i" % i, vae, na, z_size, seq_len, vae_lr, kl_tolerance)
         vaes.append(vae)
         vae_comps.append(vae_comp)
 
+
+    comp = vae_comps[0]
+    ty = vaes[1].build_decoder(comp.z, reuse=True)
+    tty = tf.transpose(ty, [0, 2, 1, 3])
+    transpose_loss = -tf.reduce_sum(comp.x * tf.log(tty + 1e-8) +
+                               (1. - comp.x) * (tf.log(1. - tty + 1e-8)), [1, 2, 3])
+    transpose_loss = tf.reduce_mean(transpose_loss)
     vae_all_op = tf.group([comp.train_op for comp in vae_comps])
     vae_total_loss = tf.reduce_sum([comp.loss for comp in vae_comps])
 
@@ -308,14 +316,14 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
 
     tf_lr = tf.placeholder(tf.float32, shape=[])
     # tf_lr = tf.Variable(lr, trainable=False)
-    rnn_comp = build_rnn("rnn", rnn, na, batch_size, global_step, clipper, tf_lr, grad_clip)
+    rnn_comp = build_rnn("rnn", rnn, na, z_size, batch_size, seq_len, global_step, clipper, tf_lr, grad_clip)
     rnn_lv_dict = rnn.get_linear_variables()
 
     print("The basic rnn has been built")
 
     # phase 2
     rnn_losses = []
-    rnn_meta_lossess = []
+    rnn_meta_losses = []
     vae_meta_var_list = [] # VAE receives the gradients from meta loss
 
     for i in range(n_tasks):
@@ -327,7 +335,7 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
                                                seq_len, batch_size_per_task, clipper, tf_lr)
 
         rnn_losses.append(rnn_loss)
-        rnn_meta_lossess.append(rnn_meta_loss)
+        rnn_meta_losses.append(rnn_meta_loss)
 
     print("RNN has been connected to each VAE")
     verified_rnn_var_list=  rnn.get_variables()
@@ -338,17 +346,18 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
 
     # We are going to minimize this
     # TODO the gradients part include the VAE. (It should be computed in adapted version.)
-    rnn_meta_total_loss = tf.reduce_sum(rnn_meta_losses)
-    rnn_total_loss = tf.reduce_sum(rnn_losses)
+    rnn_meta_total_loss = tf.reduce_mean(rnn_meta_losses)
+    rnn_total_loss = tf.reduce_mean(rnn_losses)
 
-    rnn_meta_opt = tf.AdamOptimizer(tf_lr, name="meta_rnn_opt")
+    rnn_meta_opt = tf.train.AdamOptimizer(tf_lr, name="meta_rnn_opt")
     gvs = rnn_meta_opt.compute_gradients(rnn_meta_total_loss, rnn_comp.var_list)
     clip_gvs = [(tf.clip_by_value(grad, -grad_clip, grad_clip), var) for grad, var in gvs if grad is not None]
     # train optimizer
     rnn_meta_op = rnn_meta_opt.apply_gradients(clip_gvs, global_step=global_step, name='rnn_meta_op')
 
-    vae_meta_opt = tf.AdamOptimizer(var_lr, name="meta_vae_opt")
-    gvs = vae_meta_opt.compute_gradients(rnn_meta_total_loss, vae_meta_var_list)
+    vae_meta_opt = tf.train.AdamOptimizer(vae_lr, name="meta_vae_opt")
+    #gvs = vae_meta_opt.compute_gradients(rnn_meta_total_loss, vae_meta_var_list)
+    gvs = vae_meta_opt.compute_gradients(rnn_total_loss, vae_meta_var_list)
     vae_meta_op = vae_meta_opt.apply_gradients(gvs, name='vae_meta_op')
 
     sess.run(tf.global_variables_initializer())
@@ -359,7 +368,11 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
     for i, comp in enumerate(vae_comps):
         loadFromFlat(comp.var_list, vae_dir+"/vae%i.p" % i)
 
-    warmup_num_steps = num_steps//2
+    if os.path.exists(model_dir+'/base_rnn.p'):
+        loadFromFlat(rnn_comp.var_list, model_dir+'/base_rnn.p')
+        warmup_num_steps = 0
+    else:
+        warmup_num_steps = num_steps//2
     joint_num_steps = num_steps - warmup_num_steps
 
     print("Begin Pretraining..")
@@ -372,16 +385,16 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
         step = sess.run(global_step)
         curr_lr = (curr_lr - min_lr) * decay + min_lr
 
-        raw_obs_list, raw_a_list = dm.sample(batch_size_per_task)
+        raw_obs_list, raw_a_list = dm.random_batch(batch_size_per_task)
         raw_obs_list = [obs.reshape((-1,) + obs.shape[2:]) for obs in raw_obs_list]
         # the grads won't be back propagated
         raw_z_list = []
         for j in range(n_tasks):
             comp = vae_comps[j]
-            raw_z_list.append(sess.run(comp.z, feed_dict={comp.x: raw_obs_list[i]}))
+            raw_z_list.append(sess.run(comp.z, feed_dict={comp.x: raw_obs_list[j]}))
         raw_z = np.concatenate(raw_z_list, axis=0)
         raw_z = raw_z.reshape((batch_size, seq_len+1, z_size))
-
+        raw_a = np.concatenate(raw_a_list, axis=0)
         feed = {rnn_comp.z_input: raw_z, rnn_comp.a: raw_a, tf_lr: curr_lr}
         (train_cost, _) = sess.run([rnn_comp.loss, rnn_comp.train_op], feed)
         if (step % 20 == 0 and step > 0):
@@ -392,6 +405,9 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
             output_log = "step: %d, lr: %.6f, cost: %.4f, train_time_taken: %.4f" % (
                 step, curr_lr, train_cost, time_taken)
             print(output_log)
+
+    if not  os.path.exists(model_dir+'/base_rnn.p'):
+        saveToFlat(rnn_comp.var_list, model_dir+'/base_rnn.p')
 
     print("Begin Meta Training..")
 
@@ -409,14 +425,14 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
         feed = {tf_lr: curr_lr}
         for j in range(n_tasks):
             comp = vae_comps[j]
-            feed[comp.x] =  raw_obs_list[i]
-            feed[comp.mx] = meta_obs_list[i]
-            feed[comp.a] = raw_a_list[i]
-            feed[comp.ma] = meta_a_list[i]
+            feed[comp.x] =  raw_obs_list[j]
+            feed[comp.mx] = meta_obs_list[j]
+            feed[comp.a] = raw_a_list[j]
+            feed[comp.ma] = meta_a_list[j]
 
         # joint training
-        (meta_cost, rnn_cost, vae_cost, _ , _, _) = sess.run([rnn_meta_total_loss,
-                                                             rnn_total_loss, vae_total_loss
+        (meta_cost, rnn_cost, vae_cost, transpose_cost,  _ , _, _) = sess.run([rnn_meta_total_loss,
+                                                             rnn_total_loss, vae_total_loss, transpose_loss,
                                                               vae_all_op, rnn_meta_op,
                                                               vae_meta_op], feed)
 
@@ -426,12 +442,14 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
             start = time.time()
             log_value("training loss", meta_cost, int(step // 20))
             output_log = "step: %d, lr: %.6f, meta cost: %.4f, vae cost: %.4f, " \
-                         "rnn cost: %.4f, train_time_taken: %.4f" % \
-                         (step, curr_lr, meta_cost, vae_cost, rnn_cost, time_taken)
+                         "rnn cost: %.4f, transpose cost: %.4f, train_time_taken: %.4f" % \
+                         (step, curr_lr, meta_cost, vae_cost, rnn_cost, transpose_cost, time_taken)
             print(output_log)
 
     saveToFlat(rnn_comp.var_list, model_dir + '/final_rnn.p')
-
+    for i in range(n_tasks):
+      comp = vae_comps[i]
+      saveToFlat(comp.var_list, model_dir + '/final_vae%i.p' % i) 
 
 def main():
     import argparse
@@ -439,7 +457,7 @@ def main():
     parser.add_argument('--z-size', type=int, default=32, help="z of VAE")
     parser.add_argument('--data-dir', default="record", help="the directory of data")
     parser.add_argument('--max-seq-len', type=int, default=25, help="the maximum steps of dynamics to catch")
-    parser.add_argument('--num-steps', default=4000, help="number of training iterations")
+    parser.add_argument('--num-steps', type=int, default=4000, help="number of training iterations")
 
     parser.add_argument('--batch-size-per-task', type=int, default=16, help="batch size for each task")
 
@@ -454,7 +472,7 @@ def main():
     # Transfer the data directly
     parser.add_argument('--n-tasks', type=int, default=2, help="the number of tasks")
     # parser.add_argument('--n-updates', type=int, default=1, help="number of inner gradient updates during training")
-    parser.add_argument('--vae-lr', type=int,default=0.0001, help="the learning rate of vae")
+    parser.add_argument('--vae-lr', type=float, default=0.0001, help="the learning rate of vae")
     parser.add_argument('--vae-dir', default="tf_vae", help="the path of vae models to load")
     parser.add_argument('--kl-tolerance', type=float, default=0.5, help="kl tolerance")
 

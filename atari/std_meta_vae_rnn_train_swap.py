@@ -17,6 +17,9 @@ from tensorboard_logger import configure, log_value
 from config import env_name
 import copy
 import random
+tf.set_random_seed(1234567)
+np.random.seed(1234567)
+random.seed(1234567)
 
 VAE_COMP = namedtuple('VAE_COMP', ['a', 'x', 'y', 'z', 'mu', 'logstd', 'ma', 'mx', 'my', 'mz', 'mmu', 'mlogstd', 
                                     'r_loss', 'kl_loss', 'loss', 'var_list', 'fc_var_list', 'train_op'])
@@ -386,7 +389,7 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
     # train optimizer
     rnn_meta_op = rnn_meta_opt.apply_gradients(clip_gvs, global_step=global_step, name='rnn_meta_op')
 
-    vae_meta_opt = tf.train.AdamOptimizer(vae_lr/2., name="meta_vae_opt")
+    vae_meta_opt = tf.train.AdamOptimizer(vae_lr, name="meta_vae_opt")
     #gvs = vae_meta_opt.compute_gradients(rnn_meta_total_loss, vae_meta_var_list)
     gvs = vae_meta_opt.compute_gradients(rnn_total_loss, vae_meta_var_list)
     vae_meta_op = vae_meta_opt.apply_gradients(gvs, name='vae_meta_op')
@@ -449,7 +452,7 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
         step = sess.run(global_step)
         curr_lr = (curr_lr - min_lr) * decay + min_lr
 
-        for _ in range(20):
+        for _ in range(10):
           raw_obs_list, raw_a_list = dm.random_batch(batch_size_per_task)
           raw_obs_list = [obs.reshape((-1,) + obs.shape[2:]) for obs in raw_obs_list]
 

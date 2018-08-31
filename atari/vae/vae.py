@@ -44,7 +44,7 @@ class ConvVAE(object):
         sigma = tf.exp(self.logvar / 2.0)
         epsilon = tf.random_normal([self.batch_size, self.z_size])
         z = self.mu + sigma * epsilon
-        return z
+        return self.mu, self.logvar, z
 
   def build_decoder(self, z, reuse=False):
     with tf.variable_scope(self.name):
@@ -59,6 +59,12 @@ class ConvVAE(object):
 
   def get_variables(self):
     return tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, self.scope)
+
+  def get_enc_variables(self):
+    return [v for v in self.get_variables() if 'enc' in v.name]  
+
+  def get_dec_variables(self):
+    return [v for v in self.get_variables() if 'dec' in v.name]  
 
   def get_fc_variables(self):
     return [v for v in self.get_variables() if 'fc' in v.name]

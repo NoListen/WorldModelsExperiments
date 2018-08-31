@@ -18,7 +18,7 @@ def load_from_file(param_pkl_path):
 
 def loadFromFlat(var_list, param_pkl_path):
     flat_params = load_from_file(param_pkl_path)
-    print("the type of the parameters stored is ", flat_params.dtype)
+    #print("the type of the parameters stored is ", flat_params.dtype)
     shapes = list(map(lambda x: x.get_shape().as_list(), var_list))
     total_size = np.sum([int(np.prod(shape)) for shape in shapes])
     theta = tf.placeholder(tf.float32, [total_size])
@@ -26,7 +26,7 @@ def loadFromFlat(var_list, param_pkl_path):
     assigns = []
     for (shape, v) in zip(shapes, var_list):
         size = int(np.prod(shape))
-        print(v.name)
+        #print(v.name)
         assigns.append(tf.assign(v, tf.reshape(theta[start:start + size], shape)))
         start += size
     op = tf.group(*assigns)
@@ -75,6 +75,19 @@ def get_lossfunc(logmix, mean, logstd, y):
     v = logmix + tf_lognormal(y, mean, logstd)
     v = tf.reduce_logsumexp(v, 1, keepdims=True)
     return -tf.reduce_mean(v)
+
+def get_l2_lossfunc(mean, logstd, target_mean, target_logstd):
+    return (tf.square(mean-target_mean) + tf.square(logstd-target_logstd))
+
+def get_kl_lossfunc(mean, logstd, target_mean, target_logstd):
+    return tf.reduce_sum(logstd - target_logstd + (tf.exp(2*target_logstd)+tf.square(target_mean-mean))/2/tf.exp(2*logstd) - 0.5, axis=1)
+
+def get_kl2normal_lossfunc(mean, logstd):
+    tf_kl_loss = - 0.5 * tf.reduce_sum((1 + logstd - tf.square(mean) - tf.exp(logstd)),axis=1)
+    return tf_kl_loss
+
+def get_lr_lossfunc(y, py):
+    return -tf.reduce_sum(y * tf.log(py + 1e-8) + (1. - y) * (tf.log(1. - py + 1e-8)), [1, 2, 3])
 
 def neg_likelihood(logmix, mean, logstd, y):
   v = logmix + lognormal(y, mean, logstd)
