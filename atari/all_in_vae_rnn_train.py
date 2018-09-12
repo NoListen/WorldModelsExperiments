@@ -299,8 +299,7 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
 
     global_step = tf.Variable(0, name='global_step', trainable=False)
 
-    tf_r_lr = tf.placeholder(tf.float32, shape=[])
-    # Just build the architecture.
+d    # Just build the architecture.
     rnn_comp = build_rnn("rnn", rnn, na, z_size, batch_size_per_task, seq_len)
     rnn_lv_dict = rnn.get_linear_variables()
 
@@ -383,7 +382,6 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
     rnn_meta_op = rnn_meta_opt.apply_gradients(clip_gvs, global_step=global_step, name='rnn_meta_op')
 
     vae_meta_opt = tf.train.AdamOptimizer(tf_vr_lr, name="meta_vae_opt")
-    #gvs = vae_meta_opt.compute_gradients(rnn_meta_total_loss, vae_meta_var_list)
     gvs = vae_meta_opt.compute_gradients(rnn_total_loss, vae_meta_var_list)
     vae_meta_op = vae_meta_opt.apply_gradients(gvs, name='vae_meta_op')
 
