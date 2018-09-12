@@ -19,6 +19,8 @@ import copy
 import random
 from collections import defaultdict
 from wrappers import DatasetTransposeWrapper, DatasetSwapWrapper, DatasetHorizontalConcatWrapper, DatasetVerticalConcatWrapper
+#import matplotlib.pyplot as plt
+
 VAE_COMP = namedtuple('VAE_COMP', ['a', 'x', 'y', 'z', 'mu', 'logstd', 'ma', 'mx', 'my', 'mz', 'mmu', 'mlogstd', 
                                     'r_loss', 'kl_loss', 'loss', 'var_list', 'fc_var_list', 'train_op'])
 RNN_COMP_WITH_OPT = namedtuple('RNN_COMP', ['z_input', 'a', 'logmix', 'mean', 'logstd', 'var_list'])
@@ -221,11 +223,13 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
 
     ids = [int(dn[3:]) for dn in dns]
     max_id = np.max(ids)
-    #max_ids = np.max(ids)
 
-    #for i in range(1):
-    #for i in range(0, max_id//10 + 1):
-    for i in range(37, 38):
+    def c(l):
+      return np.concatenate(l, axis=0)
+
+
+    z_log = {}
+    for i in range(76, 77):
       dn = model_dir + '/it_' + str(i*10)
       # Load the model 
       for j, comp in enumerate(vae_comps):
@@ -234,8 +238,14 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
       vae_costs = []
       transform_costs = []
       kls = []
-      #for _ in range(10):
-      for _ in range(1):
+      mus = []
+      mu1s = []
+      logstds = []
+      logstd1s = []
+      zs = []
+      z1s = []
+      for _ in range(100): # 48000
+      #for _ in range(1):
           raw_obs, raw_a = dataset.random_batch(batch_size_per_task)
           raw_obs = raw_obs.reshape((-1,) + raw_obs.shape[2:])
 
@@ -250,18 +260,22 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
           vae_costs.append(vae_cost)
           transform_costs.append(transform_cost)
           kls.append(get_kl(mu1, logstd1, mu, logstd))
+          logstds.append(logstd)
+          logstd1s.append(logstd1)
+          mus.append(mu)
+          mu1s.append(mu1)
+          zs.append(z)
+          z1s.append(z1)
 
-      output_log = "model: %i, vae cost: %.2f, transform cost: %.2f, z distance: %.2f" % \
-                         (i, np.mean(vae_costs), np.mean(transform_costs), np.mean(np.sum(np.abs(z-z1), axis=1)))
-      print(output_log)
-      print(np.mean(kls, axis=0))
-      print(np.mean(np.abs(mu), axis=0))
-      print(np.mean(np.abs(mu1), axis=0))
-      print(np.mean(np.abs(logstd), axis=0))
-      print(np.mean(np.abs(logstd1), axis=0))
-      print(np.mean(z, axis=0))
-      print(np.mean(z1, axis=0))
-      print(np.mean(np.abs(z-z1), axis=0))
+      z_log["logstd"] = c(logstds)
+      z_log["logstd1"] = c(logstd1s)
+      z_log["mu"] = c(mus)
+      z_log["mu1"] = c(mu1s)
+      z_log["z"] = c(zs)
+      z_log["z1"] = c(z1s)
+
+      with open("z_log_" + transform + '.p', "wb") as f:
+        pickle.dump(z_log, f) 
 
 def main():
     import argparse

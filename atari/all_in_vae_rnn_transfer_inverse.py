@@ -291,17 +291,15 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
 
 
     # MMD loss & added to reconstrution process
-    target_mean_mu = tf.stop_gradient(tf.reduce_mean(comp.mu, axis=0))
-    target_mean_logstd = tf.stop_gradient(tf.reduce_mean(comp.logstd, axis=0))
-    mmd_losses = [0]
-    for i in range(1, n_tasks):
-      comp = vae_comps[i]
-      mean_mu = tf.reduce_mean(comp.mu, axis=0)
-      mean_logstd = tf.reduce_mean(comp.logstd, axis=0)
-      mmd_loss = tf.reduce_sum(alpha*tf.square(mean_mu - target_mean_mu) + \
+    target_mean_mu = tf.stop_gradient(tf.reduce_mean(vae_comps[1].mu, axis=0))
+    target_mean_logstd = tf.stop_gradient(tf.reduce_mean(vae_comps[1].logstd, axis=0))
+
+    mean_mu = tf.reduce_mean(vae_comps[0].mu, axis=0)
+    mean_logstd = tf.reduce_mean(vae_comps[0].logstd, axis=0)
+    mmd_loss = tf.reduce_sum(alpha*tf.square(mean_mu - target_mean_mu) + \
                          beta*tf.square(mean_logstd - target_mean_logstd))
       #mmd_loss = tf.reduce_sum(beta*tf.square(mean_logstd - target_mean_logstd))
-      mmd_losses.append(mmd_loss)
+    mmd_losses = [mmd_loss, 0] # Now the second task is the target
 
     # Define vae train operator
     vae_train_ops = []
@@ -498,47 +496,27 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
         curr_v_lr = (curr_v_lr - min_v_lr) * v_decay + min_v_lr
         curr_vr_lr = (curr_vr_lr - min_v_lr) * v_decay + min_v_lr
 
+        ratio = 1.0
         for it in range(20):
           raw_obs_list, raw_a_list = dm.random_batch(batch_size_per_task)
           raw_obs_list = [obs.reshape((-1,) + obs.shape[2:]) for obs in raw_obs_list]
 
 
           feed = {tf_r_lr: curr_lr, tf_v_lr: curr_v_lr, tf_vr_lrs[0]: curr_vr_lr,
-                   tf_vr_lrs[1]: curr_vr_lr}
+                   tf_vr_lrs[1]: curr_vr_lr*ratio}
           for j in range(n_tasks):
               comp = vae_comps[j]
               feed[comp.x] =  raw_obs_list[j]
               feed[comp.a] = raw_a_list[j][:, :-1, :]
 
-          (kl2vae, rnn_cost, rnn_cost2, vae_cost, vae_cost2, transform_cost, ptransform_cost, rnn_logstd, vae_logstd, _) = sess.run([kl2vae_mean,
+          (kl2vae, rnn_cost, rnn_cost2, vae_cost, vae_cost2, transform_cost, ptransform_cost, rnn_logstd, vae_logstd, _, _) = sess.run([kl2vae_mean,
                                                              rnn_losses[0], rnn_losses[1], vae_comps[0].loss, vae_comps[1].loss,
                                                              transform_loss, ptransform_loss,
                                                               rnn_mean_logstd,  vae_mean_logstd,
-                                                              rnn_wu_op], feed)
-
-        if (i%1 == 0):
-            output_log = "step: %d, lr: %.6f, kl2vae:%.2f, v cost: %.2f, v cost2: %.2f" \
-                         "r cost: %.2f, r cost2: %.2f, t cost: %.2f, pt cost: %.2f, rstd:%.2f, vstd:%.2f\n" % \
-                         (step, curr_lr, kl2vae, vae_cost, vae_cost2, rnn_cost, rnn_cost2, transform_cost, ptransform_cost, rnn_logstd, vae_logstd)
-            lf.write(output_log)
-
-        for it in range(20):
-          raw_obs_list, raw_a_list = dm.random_batch(batch_size_per_task)
-          raw_obs_list = [obs.reshape((-1,) + obs.shape[2:]) for obs in raw_obs_list]
-
-
-          feed = {tf_r_lr: curr_lr, tf_v_lr: curr_v_lr, tf_vr_lrs[0]: curr_vr_lr,
-                   tf_vr_lrs[1]: curr_vr_lr}
-          for j in range(n_tasks):
-              comp = vae_comps[j]
-              feed[comp.x] =  raw_obs_list[j]
-              feed[comp.a] = raw_a_list[j][:, :-1, :]
-
-          (kl2vae, rnn_cost, rnn_cost2, vae_cost, vae_cost2, transform_cost, ptransform_cost, rnn_logstd, vae_logstd, _) = sess.run([kl2vae_mean,
-                                                             rnn_losses[0], rnn_losses[1], vae_comps[0].loss, vae_comps[1].loss,
-                                                             transform_loss, ptransform_loss,
-                                                              rnn_mean_logstd,  vae_mean_logstd,
-                                                               vae_all_rnn_op], feed)
+                                                              rnn_wu_op, vae_all_rnn_op], feed)
+          ratio = rnn_cost2/rnn_cost
+          if vae_cost > max(1.5 * prev_vae_cost, prev_vae_cost+50):
+            break
 
         if (i%1 == 0):
             output_log = "step: %d, lr: %.6f, kl2vae:%.2f, v cost: %.2f, v cost2: %.2f" \
@@ -562,6 +540,7 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
                                                              rnn_losses[0], rnn_losses[1], vae_comps[0].loss, vae_comps[1].loss, 
                                                                transform_loss, ptransform_loss,
                                                               rnn_mean_logstd,  vae_mean_logstd, vae_all_op], feed)
+        prev_vae_cost = vae_cost
         if (i % 1 == 0): #and step > 0):
             end = time.time()
             time_taken = end - start

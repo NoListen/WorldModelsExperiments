@@ -18,7 +18,7 @@ def load_from_file(param_pkl_path):
 
 def loadFromFlat(var_list, param_pkl_path):
     flat_params = load_from_file(param_pkl_path)
-    #print("the type of the parameters stored is ", flat_params.dtype)
+    print("the type of the parameters stored is ", flat_params.dtype)
     shapes = list(map(lambda x: x.get_shape().as_list(), var_list))
     total_size = np.sum([int(np.prod(shape)) for shape in shapes])
     theta = tf.placeholder(tf.float32, [total_size])

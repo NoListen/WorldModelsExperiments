@@ -182,86 +182,37 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
     tf_v_lr = tf.placeholder(tf.float32, shape=[]) # learn from reconstruction.
     tf_vr_lr = tf.placeholder(tf.float32, shape=[]) # learn from vr
 
-    vaes = []
-    vae_comps = []
-    for i in range(n_tasks):
-        vae = ConvVAE(name="vae%i" % i,
-                      z_size=z_size,
-                      batch_size=(seq_len + 1) * batch_size_per_task)
-        vae_comp = build_vae("vae%i" % i, vae, na, z_size, seq_len, tf_v_lr, kl_tolerance, fc_limit)
-        vaes.append(vae)
-        vae_comps.append(vae_comp)
+    vae = ConvVAE(name="vae", z_size=z_size, batch_size=(seq_len + 1) * batch_size_per_task)
+    comp = build_vae("vae0", vae, na, z_size, seq_len, tf_v_lr, kl_tolerance, fc_limit)
 
-
-    comp = vae_comps[1]
-    ty = vaes[0].build_decoder(comp.z, reuse=True)
-    tty = wrapper.transform(ty)
-    transform_loss = -tf.reduce_sum(comp.x * tf.log(tty + 1e-8) +
-                               (1. - comp.x) * (tf.log(1. - tty + 1e-8)), [1, 2, 3])
-    # TODO add one in the RNN's prediction error.
-    transform_loss = tf.reduce_mean(transform_loss)
-    vae_total_loss = tf.reduce_mean([comp.loss for comp in vae_comps])
+    # I only care about the right side
+    ty = tf.identity(comp.y)
+    total_grads = tf.gradients(tf.reduce_sum(ty, axis=[1,2,3]), comp.z)
 
     sess.run(tf.global_variables_initializer())
 
-    # initialize and load the model
-    sess.run(tf.global_variables_initializer())
-    joint_num_steps = num_steps
+    loadFromFlat(comp.var_list, model_dir+"/vae0.p")
+    def c(l):
+      return np.concatenate(l, axis=0)
 
-    print("Begin Pretraining..")
-    
-
-
-    # todo 1 rank all the directories.x`
-    dns = os.listdir(model_dir)
-    dns = [dn for dn in dns if 'it' in dn]
-    # I want to store all data in one dictionary and store it using pickle
-    # start from one.
-    # log scale.
-
-    ids = [int(dn[3:]) for dn in dns]
-    max_id = np.max(ids)
-    #max_ids = np.max(ids)
-
-    #for i in range(1):
-    #for i in range(0, max_id//10 + 1):
-    for i in range(37, 38):
-      dn = model_dir + '/it_' + str(i*10)
-      # Load the model 
-      for j, comp in enumerate(vae_comps):
-        loadFromFlat(comp.var_list, dn+"/vae%i.p" % j)
-
-      vae_costs = []
-      transform_costs = []
-      kls = []
+    z_log = {}
+    for i in range(1):
       #for _ in range(10):
-      for _ in range(1):
+      logstds = []
+      mus = []
+      gs = []
+      for _ in range(100):
           raw_obs, raw_a = dataset.random_batch(batch_size_per_task)
           raw_obs = raw_obs.reshape((-1,) + raw_obs.shape[2:])
-
           feed = {}
-          feed[vae_comps[0].x] =  raw_obs
-          feed[vae_comps[1].x] =  wrapper.data_transform(raw_obs)
+          feed[comp.x] =  raw_obs
 
-          (vae_cost, transform_cost, z, z1, logstd, logstd1, mu, mu1) = sess.run([vae_total_loss, transform_loss,
-                                                vae_comps[0].z, vae_comps[1].z,
-                                                vae_comps[0].logstd, vae_comps[1].logstd,
-                                                vae_comps[0].mu, vae_comps[1].mu], feed)
-          vae_costs.append(vae_cost)
-          transform_costs.append(transform_cost)
-          kls.append(get_kl(mu1, logstd1, mu, logstd))
-
-      output_log = "model: %i, vae cost: %.2f, transform cost: %.2f, z distance: %.2f" % \
-                         (i, np.mean(vae_costs), np.mean(transform_costs), np.mean(np.sum(np.abs(z-z1), axis=1)))
-      print(output_log)
-      print(np.mean(kls, axis=0))
-      print(np.mean(np.abs(mu), axis=0))
-      print(np.mean(np.abs(mu1), axis=0))
-      print(np.mean(np.abs(logstd), axis=0))
-      print(np.mean(np.abs(logstd1), axis=0))
-      print(np.mean(z, axis=0))
-      print(np.mean(z1, axis=0))
-      print(np.mean(np.abs(z-z1), axis=0))
+          (g, mu, logstd) = sess.run([total_grads, comp.mu, comp.logstd], feed)
+          gs.append(g[0])
+    z_log["grad"] = c(gs)
+    print(z_log["grad"].shape)
+    with open("grad.p", "wb") as f:
+      pickle.dump(z_log, f)
 
 def main():
     import argparse

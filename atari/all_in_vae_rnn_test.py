@@ -18,7 +18,8 @@ from config import env_name
 import copy
 import random
 from collections import defaultdict
-from wrappers import DatasetTransposeWrapper, DatasetSwapWrapper, DatasetHorizontalConcatWrapper, DatasetVerticalConcatWrapper
+from wrappers import DatasetTransposeWrapper, DatasetSwapWrapper, DatasetColorWrapper,\
+                          DatasetHorizontalConcatWrapper, DatasetVerticalConcatWrapper
 VAE_COMP = namedtuple('VAE_COMP', ['a', 'x', 'y', 'z', 'mu', 'logstd', 'ma', 'mx', 'my', 'mz', 'mmu', 'mlogstd', 
                                     'r_loss', 'kl_loss', 'loss', 'var_list', 'fc_var_list', 'train_op'])
 RNN_COMP_WITH_OPT = namedtuple('RNN_COMP', ['z_input', 'a', 'logmix', 'mean', 'logstd', 'var_list'])
@@ -203,7 +204,7 @@ def build_rnn_with_vae(vae, rnn, rnn_lv_dict, comp, z_size, seq_len, batch_size,
     return rnn_comp, rnn_meta_comp
 
 # TODO determine whether joint learning will be better.
-def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
+def learn(sess, n_tasks, z_size, data_dir, target_dir, num_steps, max_seq_len,
           batch_size_per_task=16, rnn_size=256,
           grad_clip=1.0, v_lr=0.0001, vr_lr=0.0001,
           min_v_lr=0.00001, v_decay=0.999, kl_tolerance=0.5,
@@ -226,6 +227,8 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
       wrapper = DatasetHorizontalConcatWrapper
     elif transform == "concat2":
       wrapper = DatasetVerticalConcatWrapper
+    elif transform == "color":
+      wrapper = DatasetColorWrapper
     else:
       raise Exception("Such transform is not available")
 
@@ -341,7 +344,7 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
 
 
     comp = vae_comps[0]
-    py = vaes[1].build_decoder(rnn_vcomp.pz, reuse=True) # pz shape [None, 32]
+    py = vaes[1].build_decoder(rnn_vcomps[0].pz, reuse=True) # pz shape [None, 32]
     py = wrapper.transform(py)
 
     # target y
@@ -392,7 +395,8 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
 
     log_dict = defaultdict(list)
 
-    #for i in range(1):
+    check_dir(target_dir)
+    #for i in range(200):
     for i in range(max_id//10 + 1):
       dn = model_dir + '/it_' + str(i*10)
       # Load the model 
@@ -441,8 +445,7 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
       log_dict['ptransform_cost'].append(np.mean(ptransform_costs))
       log_dict['rnn_logstd'].append(np.mean(rnn_logstds))
       log_dict['vae_logstd'].append(np.mean(vae_logstds))
-
-    with open(transform+'.p', 'wb') as f:
+    with open(target_dir+'/'+transform+'.p', 'wb') as f:
       pickle.dump(log_dict, f) 
       
 
@@ -464,7 +467,8 @@ def main():
     parser.add_argument('--decay', type=float, default=0.999, help="decay of learning rate")
 
     parser.add_argument('--transform', default="transpose", help="type of transform. ['transform', 'swap', 'concat1', 'concat2']")
-
+    parser.add_argument('--target-dir', default=".", help="the target dir to store the log")
+    
     # to load
     # Transfer the data directly
     parser.add_argument('--n-tasks', type=int, default=2, help="the number of tasks")

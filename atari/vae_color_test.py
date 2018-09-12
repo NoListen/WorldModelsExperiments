@@ -10,12 +10,12 @@ from utils import pad_num, loadFromFlat
 os.environ["CUDA_VISIBLE_DEVICES"]="-1" # disable GPU
 
 DATA_DIR = "record"
-#model_path_name = "tf_rnn/all_in_concat2c/it_650"
-model_path_name = "practice/d7/concat2g/it_830"
-output_dir = "result/vae_concat2_result"
+#model_path_name = "tf_vae"
+#model_path_name = "tf_rnn/tmp"
+model_path_name = "practice/d7/color0/it_1110"
+output_dir = "result/vae_color_result2"
 
 z_size=32
-#z_size=256
 
 filelist = os.listdir(DATA_DIR)
 filelist = [f for f in filelist if '.npz' in f]
@@ -49,9 +49,7 @@ var_list2 = vae2.get_variables()
 
 my = vae2.build_decoder(z, reuse=True)
 #xt = tf.transpose(x, [0, 2, 1, 3])
-xt = x[:, :, ::-1, :]
-xt = tf.split(x, 2,axis=1)
-xt = tf.concat(xt[::-1], axis=1)
+xt = 1-x
 
 sess = tf.InteractiveSession()
 sess.run(tf.global_variables_initializer())
@@ -79,8 +77,8 @@ for i in range(n):
     #frameT = np.transpose(frame, [0, 2, 1, 3])
     feed = {x: frame}
     reconstruct, r_loss = sess.run([my, tf_r_loss], feed)
-    #reconstruct = np.split(reconstructT, 2, axis=1)
-    #reconstruct = np.concatenate(reconstruct[::-1], axis=1)
+    #reconstruct = np.split(reconstructT, 2, axis=2)
+    #reconstruct = np.concatenate(reconstruct[::-1], axis=2)
     r_losses.append(r_loss)
     #print(i, np.max(frame), np.max(reconstruct), r_loss)
     imsave(output_dir+'/%s.png' % pad_num(i), 255.*frame[0].reshape(64, 64))

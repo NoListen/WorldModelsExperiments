@@ -45,7 +45,7 @@ var_list = vae.get_variables()
 
 sess = tf.InteractiveSession()
 sess.run(tf.global_variables_initializer())
-loadFromFlat(var_list, 'tf_vae/vae0.p')
+loadFromFlat(var_list, 'practice/d5/swap_no_cor8/it_760/vae0.p')
 
 
 var_values_list = []
@@ -74,6 +74,9 @@ for var in var_list:
          print(v.shape)
          print(v[9])
          print(np.sum(np.abs(v), axis=1))
+         print(np.sum(v, axis=1))
+         with open("decoder_weight.p", "wb") as f:
+           pickle.dump(np.sum(np.abs(v), axis=1), f)
          pass
          #v = alter_dec_weight(v, 32, order)
     else:

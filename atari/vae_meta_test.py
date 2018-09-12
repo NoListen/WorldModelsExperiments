@@ -12,9 +12,8 @@ os.environ["CUDA_VISIBLE_DEVICES"]="-1" # disable GPU
 DATA_DIR = "record"
 #model_path_name = "tf_vae"
 #model_path_name = "tf_rnn/tmp"
-model_path_name = "swap3/it_240/it_2000"
-output_dir = "vae_swap_result"
-
+model_path_name = "practice/d1/transpose0/it_1040"
+output_dir = "result/vae_transpose_result"
 z_size=32
 
 filelist = os.listdir(DATA_DIR)
@@ -75,9 +74,9 @@ for i in range(n):
     frame = obs[i].reshape(1, 64, 64, 1)
     #frameT = np.transpose(frame, [0, 2, 1, 3])
     feed = {x: frame}
-    reconstructT, r_loss = sess.run([my, tf_r_loss], feed)
+    reconstruct, r_loss = sess.run([my, tf_r_loss], feed)
     #reconstruct, r_loss = sess.run([y, tf_r_loss], feed)
-    reconstruct = np.transpose(reconstructT, [0, 2, 1, 3])
+    #reconstruct = np.transpose(reconstructT, [0, 2, 1, 3])
     #reconstruct = reconstructT[:, :, ::-1, :]
     r_losses.append(r_loss)
     #print(i, np.max(frame), np.max(reconstruct), r_loss)

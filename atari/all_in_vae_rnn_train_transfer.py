@@ -344,6 +344,8 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
     rnn_vcomps = []
     rnn_meta_vcomps = []
     vae_meta_var_list = []
+    #rnn_mmd_losses = []
+
     for i in range(n_tasks):
         comp = vae_comps[i]
         vae = vaes[i]
@@ -356,15 +358,26 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
                                                tmp_rnn_lv_dict, comp, z_size,
                                                seq_len, batch_size_per_task, tf_r_lr, kl_tolerance)
 
+
+        mean_mu = tf.reduce_mean(rnn_vcomp.mean, axis=0)
+        mean_logstd = tf.reduce_mean(rnn_vcomp.logstd, axis=0)
+        mmd_loss = alpha*tf.reduce_sum(tf.square(mean_mu - target_mean_mu) + \
+                         beta*tf.square(mean_logstd - target_mean_logstd))
+        #rnn_mmd_losses.append(mmd_loss)
+
         rnn_logstds.append(rnn_vcomp.logstd)
         rnn_meta_logstds.append(rnn_meta_vcomp.logstd)
-        rnn_losses.append(rnn_vcomp.loss)
+        rnn_losses.append(rnn_vcomp.loss + mmd_loss)
         rnn_meta_losses.append(rnn_meta_vcomp.loss)
         kl2vaes.append(rnn_vcomp.kl2vae)
         meta_kl2vaes.append(rnn_meta_vcomp.kl2vae)
         rnn_vcomps.append(rnn_vcomp)
         rnn_meta_vcomps.append(rnn_meta_vcomp)
 
+
+      mmd_loss = alpha*tf.reduce_sum(tf.square(mean_mu - target_mean_mu) + \
+                         beta*tf.square(mean_logstd - target_mean_logstd))
+      mmd_losses.append(mmd_loss)
 
 
     comp = vae_comps[0]
