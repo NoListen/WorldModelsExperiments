@@ -6,16 +6,15 @@ import random
 from vae.vae import ConvVAE, reset_graph
 from scipy.misc import imsave
 from utils import pad_num, loadFromFlat
+import pickle
 
 os.environ["CUDA_VISIBLE_DEVICES"]="-1" # disable GPU
 
 DATA_DIR = "record"
-#model_path_name = "tf_rnn/all_in_concat2c/it_650"
-model_path_name = "practice/d7/concat2g/it_830"
-output_dir = "result/vae_concat2_result"
+model_dir = "swap/swap3"
+output_dir = "vae_swap_result"
 
 z_size=32
-#z_size=256
 
 filelist = os.listdir(DATA_DIR)
 filelist = [f for f in filelist if '.npz' in f]
@@ -50,8 +49,6 @@ var_list2 = vae2.get_variables()
 my = vae2.build_decoder(z, reuse=True)
 #xt = tf.transpose(x, [0, 2, 1, 3])
 xt = x[:, :, ::-1, :]
-xt = tf.split(x, 2,axis=1)
-xt = tf.concat(xt[::-1], axis=1)
 
 sess = tf.InteractiveSession()
 sess.run(tf.global_variables_initializer())
@@ -59,30 +56,31 @@ sess.run(tf.global_variables_initializer())
 tf_r_loss = tf.reduce_mean(-tf.reduce_sum(xt * tf.log(my+1e-8) +
                                       (1-xt) * (tf.log(1-my+1e-8)),[1,2,3]))
 
-print(var_list)
-print(var_list2)
-
-#loadFromFlat(var_list, model_path_name + '/final_vae0.p')
-loadFromFlat(var_list, model_path_name+'/vae0.p')
-#loadFromFlat(var_list2, model_path_name + '/final_vae1.p')
-#loadFromFlat(var_list2, 'tf_rnn/final_vae1.p')
-loadFromFlat(var_list2, model_path_name+'/vae1.p')
+tf_r_loss_self = tf.reduce_mean(-tf.reduce_sum(x * tf.log(my+1e-8) +
+                                      (1-x) * (tf.log(1-my+1e-8)),[1,2,3]))
 
 if not os.path.exists(output_dir):
     os.mkdir(output_dir)
 
 r_losses = []
 print(n, "images loaded")
-for i in range(n):
-    # input
-    frame = obs[i].reshape(1, 64, 64, 1)
-    #frameT = np.transpose(frame, [0, 2, 1, 3])
-    feed = {x: frame}
-    reconstruct, r_loss = sess.run([my, tf_r_loss], feed)
-    #reconstruct = np.split(reconstructT, 2, axis=1)
-    #reconstruct = np.concatenate(reconstruct[::-1], axis=1)
-    r_losses.append(r_loss)
-    #print(i, np.max(frame), np.max(reconstruct), r_loss)
-    imsave(output_dir+'/%s.png' % pad_num(i), 255.*frame[0].reshape(64, 64))
-    imsave(output_dir+'/%s_vae.png' % pad_num(i), 255.*reconstruct[0].reshape(64, 64))
-print("the mean of reconstruction loss", np.mean(r_losses))
+
+dns = os.listdir(model_dir)
+dns = [dn for dn in dns if 'it' in dn]
+
+ids = [int(dn[3:]) for dn in dns]
+max_id = np.max(ids)
+
+hist = []
+
+obs = obs.reshape(-1, 64, 64, 1)
+for i in range(max_id//10 + 1):
+    dn = model_dir + '/it_' + str(i*10)
+    loadFromFlat(var_list, dn+"/vae0.p")
+    loadFromFlat(var_list2, dn+"/vae1.p")
+    feed = {x: obs}
+    loss = sess.run([tf_r_loss, tf_r_loss_self], feed)
+    r_losses.append(loss)
+    print(i, "r_loss: %.4f r_loss_self: %.4f" % (loss[0], loss[1]))
+with open("swap_loss.p" , "wb") as f:
+  pickle.dump(r_losses , f)

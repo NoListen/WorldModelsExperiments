@@ -38,14 +38,14 @@ vae = ConvVAE(name="conv_vae",
                 batch_size=1)
 
 x = tf.placeholder(tf.float32, shape=[None, 64, 64, 1], name="x")
-z = vae.build_encoder(x)
+mu, logstd, z = vae.build_encoder(x)
 y = vae.build_decoder(z)
 print(z.shape)
 var_list = vae.get_variables()
 
 sess = tf.InteractiveSession()
 sess.run(tf.global_variables_initializer())
-loadFromFlat(var_list, 'tf_vae/vae0.p')
+loadFromFlat(var_list, 'practice/d5/swap_no_cor8/it_760/vae0.p')
 
 
 var_values_list = []
@@ -53,7 +53,7 @@ var_values_list = []
 order = None
 
 for var in var_list:
-  print(var.name, var.shape)
+  #print(var.name, var.shape)
   v = sess.run(var)
   l_type, w_type = var.name.split('/')[-2:]
 
@@ -61,16 +61,22 @@ for var in var_list:
   if 'conv' in l_type:
     if 'kernel' in w_type:
       print("conv rotate", var.name)
-      v = transpose_conv(v)
+      #v = transpose_conv(v)
     else:
       print("do nothing")
   elif 'fc' in l_type:
     if 'enc' in l_type:
         if 'kernel' in w_type:
-          v = transpose_enc_fc(v)
+          pass
         #v, order = alter_enc_weight(v, 32, order)
     elif 'dec' in l_type:
        if 'kernel' in w_type:
+         print(v.shape)
+         print(v[9])
+         print(np.sum(np.abs(v), axis=1))
+         print(np.sum(v, axis=1))
+         with open("decoder_weight.p", "wb") as f:
+           pickle.dump(np.sum(np.abs(v), axis=1), f)
          pass
          #v = alter_dec_weight(v, 32, order)
     else:
@@ -78,8 +84,8 @@ for var in var_list:
   else:
     print("error")
 
-  var_values_list.append(v.flatten())
+  #var_values_list.append(v.flatten())
 
-var_values_list = np.concatenate(var_values_list)
-print(var_values_list.shape)
-pickle.dump(var_values_list, open("tf_vae/vae1.p", "wb"))
+#var_values_list = np.concatenate(var_values_list)
+#print(var_values_list.shape)
+#pickle.dump(var_values_list, open("tf_vae/vae1.p", "wb"))

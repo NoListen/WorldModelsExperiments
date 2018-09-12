@@ -381,10 +381,18 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
     # train optimizer
     rnn_meta_op = rnn_meta_opt.apply_gradients(clip_gvs, global_step=global_step, name='rnn_meta_op')
 
-    vae_meta_opt = tf.train.AdamOptimizer(tf_vr_lr, name="meta_vae_opt")
-    #gvs = vae_meta_opt.compute_gradients(rnn_meta_total_loss, vae_meta_var_list)
-    gvs = vae_meta_opt.compute_gradients(rnn_total_loss, vae_meta_var_list)
-    vae_meta_op = vae_meta_opt.apply_gradients(gvs, name='vae_meta_op')
+    vae_rnn_ops = []
+    for i in range(n_tasks):
+        comp = vae_comps[i]
+        vae_rnn_opt = tf.train.AdamOptimizer(tf_vr_lr, name="vae_rnn_opt%i" % i)
+        if fc_limit:
+          gvs = vae_rnn_opt.compute_gradients(rnn_losses[i], comp.fc_var_list)
+        else:
+          gvs = vae_rnn_opt.compute_gradients(rnn_losses[i], comp.var_list)
+        vae_rnn_op = vae_rnn_opt.apply_gradients(gvs, name='vae_rnn_op%i' % i)
+        vae_rnn_ops.append(vae_rnn_op)
+
+    vae_all_rnn_op = tf.group(vae_rnn_ops)
 
     sess.run(tf.global_variables_initializer())
     curr_lr = lr
@@ -461,7 +469,7 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
           (kl2vae, rnn_cost, vae_cost, transform_cost, ptransform_cost, rnn_logstd, vae_logstd, _, _) = sess.run([kl2vae_mean,
                                                              rnn_total_loss, vae_total_loss, transform_loss, ptransform_loss,
                                                               rnn_mean_logstd,  vae_mean_logstd,
-                                                              rnn_wu_op, vae_meta_op], feed)
+                                                              rnn_wu_op, vae_all_rnn_op], feed)
         if (i%1 == 0):
             output_log = "step: %d, lr: %.6f, kl2vae:%.2f, vae cost: %.2f, " \
                          "rnn cost: %.2f, transform cost: %.2f, pt cost: %.2f, rstd:%.4f, vstd:%.4f" % \

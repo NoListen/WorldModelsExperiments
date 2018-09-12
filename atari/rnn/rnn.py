@@ -2,7 +2,8 @@ import numpy as np
 from collections import namedtuple
 import json
 import tensorflow as tf
-
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 # TODO consider controller
 # Now focus on RNN & VAE
 # MODE_ZCH = 0
@@ -77,7 +78,11 @@ class MDNRNN():
                 print("applying dropout to output with keep_prob =", self.output_dp)
                 cell = tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=self.output_dp)
 
-            return self.build_base_model(cell, input_x)
+            n_out = self.output_size * self.n_mix * 3
+            output_w = tf.get_variable("output_w", [self.rnn_size, n_out])
+            output_b = tf.get_variable("output_b", [n_out])
+
+            return self.build_base_model(cell, input_x, output_w, output_b)
 
     def build_variant_model(self, input_x, weight_dict, reuse=False):
         with tf.variable_scope(self.name, reuse=reuse):
@@ -89,6 +94,7 @@ class MDNRNN():
             else:
                 cell = cell_fn(weight_dict, self.rnn_size, layer_norm=self.layer_norm)
 
+            
             if self.input_dp < 1.0:
                 print("applying dropout to input with keep_prob =", self.input_dp)
                 cell = tf.contrib.rnn.DropoutWrapper(cell, input_keep_prob=self.input_dp)
@@ -96,21 +102,20 @@ class MDNRNN():
             if self.output_dp < 1.0:
                 print("applying dropout to output with keep_prob =", self.output_dp)
                 cell = tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=self.output_dp)
+            
+            output_w = weight_dict["output_w"]
+            output_b = weight_dict["output_b"]
 
-            return self.build_base_model(cell, input_x)
+            return self.build_base_model(cell, input_x, output_w, output_b)
 
-    def build_base_model(self, cell, input_x):
-
-            initial_state = cell.zero_state(batch_size=self.batch_size, dtype=tf.float32)
-            n_out = self.output_size * self.n_mix * 3
-
-            output_w = tf.get_variable("output_w", [self.rnn_size, n_out])
-            output_b = tf.get_variable("output_b", [n_out])
-
-            output, last_state = tf.nn.dynamic_rnn(cell, input_x, initial_state=initial_state,
-                                                   time_major=False, swap_memory=True,
+    def build_base_model(self, cell, input_x, output_w, output_b):
+            input_x_list = tf.split(input_x, self.max_seq_len, axis=1)
+            input_x_list = [tf.squeeze(i) for i in input_x_list]
+            # TODO make use of initial state
+            # initial_state = cell.zero_state(batch_size=self.batch_size, dtype=tf.float32)
+            output, last_state = tf.nn.static_rnn(cell, input_x_list, #initial_state=initial_state,
                                                    dtype=tf.float32, scope="RNN")
-
+            output = tf.stack(output, axis=1)
             output = tf.reshape(output, [-1, self.rnn_size])
             output = tf.nn.xw_plus_b(output, output_w, output_b)
             output = tf.reshape(output, [-1, self.n_mix * 3]) # mean std weight
@@ -123,7 +128,7 @@ class MDNRNN():
 
             out_logmix, out_mean, out_logstd = get_mdn_coef(output)
 
-            return out_logmix, out_mean, out_logstd, initial_state, final_state
+            return out_logmix, out_mean, out_logstd, final_state
 
 
     # def get_random_model_params(self, stdev=0.5):
@@ -144,6 +149,10 @@ class MDNRNN():
                 lv_dict["kernel"] = var
             elif v_type == "bias":
                 lv_dict["bias"] = var
+            elif v_type == "output_w":
+                lv_dict["output_w"] = var
+            elif v_type == "output_b":
+                lv_dict["output_b"] = var
             else:
                 continue
             print(var.name, "has been added to linear variables")

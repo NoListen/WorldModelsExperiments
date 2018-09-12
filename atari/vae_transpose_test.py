@@ -10,8 +10,8 @@ from utils import pad_num, loadFromFlat
 os.environ["CUDA_VISIBLE_DEVICES"]="-1" # disable GPU
 
 DATA_DIR = "record"
-model_path_name = "vae"
-output_dir = "vae_test_result"
+model_path_name = "practice/d1/transpose0/it_1040"
+output_dir = "result/vae_transpose_result"
 
 z_size=32
 
@@ -31,7 +31,7 @@ vae = ConvVAE(name="conv_vae",
               batch_size=1)
 
 x = tf.placeholder(tf.float32, shape=[None, 64, 64, 1], name="x")
-z = vae.build_encoder(x)
+mu, logstd, z = vae.build_encoder(x)
 y = vae.build_decoder(z)
 
 sess = tf.InteractiveSession()
@@ -52,11 +52,11 @@ for i in range(n):
     frame = obs[i].reshape(1, 64, 64, 1)
     frameT = np.transpose(frame, [0, 2, 1, 3])
     feed = {x: frameT}
-    reconstructT, r_loss = sess.run([y, tf_r_loss], feed)
+    reconstruct, r_loss = sess.run([y, tf_r_loss], feed)
     #reconstruct, r_loss = sess.run([y, tf_r_loss], feed)
-    reconstruct = np.transpose(reconstructT, [0, 2, 1, 3])
+    #reconstruct = np.transpose(reconstructT, [0, 2, 1, 3])
     r_losses.append(r_loss)
     #print(i, np.max(frame), np.max(reconstruct), r_loss)
-    #imsave(output_dir+'/%s.png' % pad_num(i), 255.*frame[0].reshape(64, 64))
-    imsave(output_dir+'/%s_vaet.png' % pad_num(i), 255.*reconstruct[0].reshape(64, 64))
+    imsave(output_dir+'/%s.png' % pad_num(i), 255.*frame[0].reshape(64, 64))
+    imsave(output_dir+'/%s_vae.png' % pad_num(i), 255.*reconstruct[0].reshape(64, 64))
 print("the mean of reconstruction loss", np.mean(r_losses))

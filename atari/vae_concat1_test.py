@@ -12,8 +12,8 @@ os.environ["CUDA_VISIBLE_DEVICES"]="-1" # disable GPU
 DATA_DIR = "record"
 #model_path_name = "tf_vae"
 #model_path_name = "tf_rnn/tmp"
-model_path_name = "tf_rnn/concat1b/it_1500"
-output_dir = "vae_concat1_result"
+model_path_name = "practice/d3/concat0b/it_2980"
+output_dir = "result/vae_concat1_result"
 
 z_size=32
 
@@ -78,9 +78,9 @@ for i in range(n):
     frame = obs[i].reshape(1, 64, 64, 1)
     #frameT = np.transpose(frame, [0, 2, 1, 3])
     feed = {x: frame}
-    reconstructT, r_loss = sess.run([my, tf_r_loss], feed)
-    reconstruct = np.split(reconstructT, 2, axis=2)
-    reconstruct = np.concatenate(reconstruct[::-1], axis=2)
+    reconstruct, r_loss = sess.run([my, tf_r_loss], feed)
+    #reconstruct = np.split(reconstructT, 2, axis=2)
+    #reconstruct = np.concatenate(reconstruct[::-1], axis=2)
     r_losses.append(r_loss)
     #print(i, np.max(frame), np.max(reconstruct), r_loss)
     imsave(output_dir+'/%s.png' % pad_num(i), 255.*frame[0].reshape(64, 64))
