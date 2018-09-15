@@ -435,13 +435,13 @@ def learn(sess, z_size, data_dir, num_steps, max_seq_len,
     dns = [dn for dn in dns if 'it' in dn]
 
     ids = [int(dn[3:]) for dn in dns]
+    print(len(ids), len(dns))
     max_id = np.max(ids)
-
     log_dict = defaultdict(list)
 
     check_dir(target_dir)
     #for i in range(200):
-    for i in range(max_id//10 + 1):
+    for i in range(280, max_id//10 + 1):
       dn = model_dir + '/it_' + str(i*10)
       # Load the model 
       for j, comp in enumerate(vae_comps):
@@ -472,7 +472,7 @@ def learn(sess, z_size, data_dir, num_steps, max_seq_len,
           vae_costs.append(np.array(vae_cost))
           transform_costs.append(np.array(transform_cost))
           ptransform_costs.append(np.array(ptransform_cost))
-      print(i, max_id)
+      print(i, max_id, np.mean(rnn_costs, axis=0))
       log_dict['vae_cost'].append(np.mean(vae_costs, axis=0))
       log_dict['rnn_cost'].append(np.mean(rnn_costs, axis=0))
       log_dict['transform_cost'].append(np.mean(transform_costs, axis=0))

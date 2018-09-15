@@ -9,12 +9,16 @@ from utils import pad_num, loadFromFlat
 
 os.environ["CUDA_VISIBLE_DEVICES"]="-1" # disable GPU
 
-DATA_DIR = "record"
+DATA_DIR = "example"
+#DATA_DIR = "record"
 #model_path_name = "tf_vae"
 #model_path_name = "tf_rnn/tmp"
-model_path_name = "practice/d5/swap_no_cor7/it_880"
+
+#model_path_name = "practice/d5/swap_no_cor7/it_880"
+model_path_name = "baseline"
+
 #model_path_name = "swap3/it_240/it_2000"
-output_dir = "result/vae_swap_result"
+output_dir = "vae_swap_result"
 
 z_size=32
 

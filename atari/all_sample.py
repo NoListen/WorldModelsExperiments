@@ -77,9 +77,10 @@ def build_rnn(name, rnn, na, z_size, batch_size, seq_len):
 
 
     input_x = tf.concat([rnn_z, a], axis=2)
+    print(input_x.shape)
 
     # useless later on.
-    out_logmix, out_mean, out_logstd, _, _ = rnn.build_model(input_x)
+    out_logmix, out_mean, out_logstd = rnn.build_model(input_x)
 
     rnn_var_list = rnn.get_variables()
     rnn_comp = RNN_COMP_WITH_OPT(a=a, z_input=rnn_z, logmix=out_logmix,
@@ -161,7 +162,7 @@ def learn(sess, z_size, data_dir, max_seq_len,
     output_size = z_size
 
     print("the environment", env_name, "has %i actions" % na)
-    transform_types = ["Reconstruct", "Transpose", "Concat1", "Concat2"]
+    transform_types = ["Reconstruct", "Transpose", "Concat1", "Color"]
     wrappers = [None, DatasetTransposeWrapper, DatasetHorizontalConcatWrapper, DatasetColorWrapper]
     seq_len = max_seq_len
 
@@ -221,11 +222,8 @@ def learn(sess, z_size, data_dir, max_seq_len,
     rnn_losses = []
     rnn_meta_losses = []
     rnn_logstds = []
-    rnn_meta_logstds = []
     kl2vaes = []
-    meta_kl2vaes = []
     rnn_vcomps = []
-    rnn_meta_vcomps = []
     vae_meta_var_list = []
 
     for i in range(n_tasks):
@@ -241,13 +239,9 @@ def learn(sess, z_size, data_dir, max_seq_len,
 
 
         rnn_logstds.append(rnn_vcomp.logstd)
-        rnn_meta_logstds.append(rnn_meta_vcomp.logstd)
         rnn_losses.append(rnn_vcomp.loss)
-        rnn_meta_losses.append(rnn_meta_vcomp.loss)
         kl2vaes.append(rnn_vcomp.kl2vae)
-        meta_kl2vaes.append(rnn_meta_vcomp.kl2vae)
         rnn_vcomps.append(rnn_vcomp)
-        rnn_meta_vcomps.append(rnn_meta_vcomp)
 
 
     ptransform_losses = []
@@ -287,13 +281,12 @@ def learn(sess, z_size, data_dir, max_seq_len,
     sess.run(tf.global_variables_initializer())
     for i, comp in enumerate(vae_comps):
       loadFromFlat(comp.var_list, vae_dir+"/vae%i.p" % i)
-    loadFromFlat(loadFromFlat(rnn_comp.var_list, vae_dir+"/rnn.p")
+    loadFromFlat(rnn_comp.var_list, vae_dir+"/rnn.p")
 
     # check_dir(target_dir)
 
     # Load the data, only one episode and dream from the start
     # Sample the data one by one
-
     filelist = os.listdir(data_dir)
     filelist = [f for f in filelist if '.npz' in f]
     fn = random.choice(filelist)
@@ -305,7 +298,7 @@ def learn(sess, z_size, data_dir, max_seq_len,
 
     # TODO replace the action by the policy
     actions = data["action"]
-    oh_actions = onehot_actions(action, na)
+    oh_actions = onehot_actions(actions, na)
 
     n = len(obs)
 
@@ -322,16 +315,21 @@ def learn(sess, z_size, data_dir, max_seq_len,
     tf_pys = tuple(tf_pys)
 
     check_dir(target_dir)
+    check_dir(target_dir + '/origin/')
+    check_dir(target_dir + '/compare/')
+    check_dir(target_dir + '/dream/')
     for t in transform_types:
-        check_dir(target_dir+'/'+t)
+        check_dir(target_dir+'/dream/'+t)
+        check_dir(target_dir+'/compare/'+t)
 
     # The model will share the first several frames.
     for i in range(n):
       frame = obs[i].reshape(-1, 64, 64, 1)
-      action = oh_actions[i:i+1]
+      action = oh_actions[i:i+1][None]
       feed = {}
       for j in range(n_tasks):
         comp = vae_comps[j]
+        w = wrappers[j]
         # real data or dream data
         if i < rn:
           if w is None:
@@ -339,7 +337,7 @@ def learn(sess, z_size, data_dir, max_seq_len,
           else:
             feed[comp.x] = w.data_transform(frame)
         else:
-            feed[comp.x] = pys[i]
+            feed[comp.x] = pys[j]
 
         feed[comp.a] = action # the same for all tasks.
         rcomp = rnn_vcomps[j]
@@ -349,9 +347,15 @@ def learn(sess, z_size, data_dir, max_seq_len,
       last_states, pys = sess.run([tf_last_states, tf_pys] ,feed)
       # All of them are dream world
       for j, py in enumerate(pys):
-          img = py.reshape(64,64)
-          imsave(target_dir+'/'+transform_types[j]+'/%s.png' % pad_num(i), img)
-
+          img = py.reshape(64,64)*255.
+          imsave(target_dir+'/dream/'+transform_types[j]+'/%s.png' % pad_num(i), img)
+          w = wrappers[j]
+          if w is not None:
+            img = w.data_transform(py)
+            img = img.reshape(64,64)*255.
+          imsave(target_dir+'/compare/'+transform_types[j]+'/%s.png' % pad_num(i), img)
+      imsave(target_dir+'/origin/'+'%s.png' % pad_num(i), frame.reshape(64,64)*255.)
+      
 
 
 
@@ -371,7 +375,7 @@ def main():
     # parser.add_argument('--n-updates', type=int, default=1, help="number of inner gradient updates during training")
 
     parser.add_argument('--vae-dir', default="tf_vae", help="the path of vae models to load")
-    parser.add_argument('--target-dir', default="dream", help="the output of dream world")
+    parser.add_argument('--target-dir', default="dream_world", help="the output of dream world")
 
     parser.add_argument('--kl-tolerance', type=float, default=0.5, help="kl tolerance")
 

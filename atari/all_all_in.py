@@ -496,8 +496,8 @@ def learn(sess, z_size, data_dir, num_steps, max_seq_len,
                      (step, curr_lr, kl2vae, rnn_logstd, vae_logstd, rnn_cost, vae_cost, transform_cost)
             print(output_log)
 
-    if not  os.path.exists(model_dir+'/base_rnn.p'):
-        saveToFlat(rnn_comp.var_list, model_dir+'/base_rnn.p')
+    #if not  os.path.exists(model_dir+'/base_rnn.p'):
+    #    saveToFlat(rnn_comp.var_list, model_dir+'/base_rnn.p')
 
     print("Begin Meta Training..")
 
@@ -510,31 +510,6 @@ def learn(sess, z_size, data_dir, num_steps, max_seq_len,
         curr_v_lr = (curr_v_lr - min_v_lr) * v_decay + min_v_lr
         curr_vr_lr = (curr_vr_lr - min_v_lr) * v_decay + min_v_lr
 
-        for _ in range(10):
-          raw_obs_list, raw_a_list = dm.random_batch(batch_size_per_task)
-          raw_obs_list = [obs.reshape((-1,) + obs.shape[2:]) for obs in raw_obs_list]
-
-
-          feed = {tf_r_lr: curr_lr, tf_v_lr: curr_v_lr}
-          for j in range(n_tasks):
-              comp = vae_comps[j]
-              feed[comp.x] =  raw_obs_list[j]
-              feed[comp.a] = raw_a_list[j][:, :-1, :]
-              feed[tf_vr_lrs[j]] = curr_vr_lr
-
-          (kl2vae, rnn_cost, vae_cost, transform_cost, ptransform_cost, rnn_logstd, vae_logstd, _) = sess.run([kl2vae_mean,
-                                                             tf_rnn_losses, tf_vae_losses,
-                                                              tf_t_losses, tf_pt_losses,
-                                                              rnn_mean_logstd,  vae_mean_logstd,
-                                                              rnn_wu_op], feed)
-
-        if (i%1 == 0):
-            output_log = "step: %d, lr: %.6f \n" % (step, curr_lr)
-            output_log += log_line("vae", vae_cost)
-            output_log += log_line("rnn", rnn_cost)
-            output_log += log_line("t", transform_cost)
-            output_log += log_line("pt", ptransform_cost)
-            lf.write(output_log)
         
         for _ in range(20):
           raw_obs_list, raw_a_list = dm.random_batch(batch_size_per_task)
@@ -548,11 +523,11 @@ def learn(sess, z_size, data_dir, num_steps, max_seq_len,
               feed[comp.a] = raw_a_list[j][:, :-1, :]
               feed[tf_vr_lrs[j]] = curr_vr_lr
 
-          (kl2vae, rnn_cost, vae_cost, transform_cost, ptransform_cost, rnn_logstd, vae_logstd, _) = sess.run([kl2vae_mean,
+          (kl2vae, rnn_cost, vae_cost, transform_cost, ptransform_cost, rnn_logstd, vae_logstd, _, _) = sess.run([kl2vae_mean,
                                                              tf_rnn_losses, tf_vae_losses,
                                                               tf_t_losses, tf_pt_losses,
                                                               rnn_mean_logstd,  vae_mean_logstd,
-                                                               vae_all_rnn_op], feed)
+                                                               vae_all_rnn_op, rnn_wu_op], feed)
 
         if (i%1 == 0):
             output_log = "step: %d, lr: %.6f \n" % (step, curr_lr)

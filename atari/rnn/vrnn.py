@@ -135,9 +135,9 @@ class VRNN():
 
     def build_base_model(self, cell, input_x, output_w, output_b, state_in, hflag=False):
         input_x_list = tf.split(input_x, self.max_seq_len, axis=1)
-        input_x_list = [tf.squeeze(i) for i in input_x_list]
+        input_x_list = [tf.squeeze(i, [1]) for i in input_x_list]
         # TODO make use of initial state
-        output, last_state = tf.nn.static_rnn(cell, input_x_list, initial_state-state_in,
+        output, last_state = tf.nn.static_rnn(cell, input_x_list, initial_state=state_in,
                                               dtype=tf.float32, scope="RNN")
         output = tf.stack(output, axis=1)
         output = tf.reshape(output, [-1, self.rnn_size])
