@@ -6,6 +6,12 @@ import pickle
 
 logSqrtTwoPI = np.log(np.sqrt(2.0 * np.pi))
 
+def wrap(wrapper, s):
+    if wrapper is None:
+        return s
+    else:
+        return wrapper.data_transform(s)
+
 def saveToFlat(var_list, param_pkl_path):
     # get all the values
     var_values = np.concatenate([v.flatten() for v in tf.get_default_session().run(var_list)])
