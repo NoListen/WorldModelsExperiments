@@ -109,6 +109,11 @@ def onehot_actions(actions, na):
   return oh_actions
 
 
+def onehot_action(action, na):
+  oh_action = np.zeros((na,))
+  oh_action[action] = 1
+  return oh_action
+
 def pad_num(n):
     s = str(n)
     return '0'*(4-len(s)) + s

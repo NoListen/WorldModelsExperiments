@@ -98,6 +98,7 @@ def process_z_with_vae(x, z, a, batch_size, seq_len, z_size):
     target_y = tf.reshape(target_y, (-1, 64, 64, 1))
 
     input_z = tf.reshape(z, (batch_size, seq_len+1, z_size))[:, :-1, :]
+    print(z.shape,  input_z.shape, "processing ...")
     input_z = tf.concat([input_z, a], axis=2)
 
     return input_z, target_y
@@ -338,7 +339,7 @@ def learn(sess, z_size, data_dir, max_seq_len,
             feed[comp.x] = w.data_transform(frame)
         else:
             feed[comp.x] = pys[j]
-
+        tz = sess.run(vae_comps[0].z, feed)
         feed[comp.a] = action # the same for all tasks.
         rcomp = rnn_vcomps[j]
         feed[rcomp.state_in[0]] = last_states[j][0]
