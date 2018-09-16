@@ -19,6 +19,8 @@ from config import env_name
 import copy
 import random
 from datetime import datetime
+from agent import Agent
+from collections import deque
 from wrappers import DatasetTransposeWrapper, DatasetSwapWrapper, DatasetHorizontalConcatWrapper,\
                        DatasetVerticalConcatWrapper, DatasetColorWrapper
 VAE_COMP = namedtuple('VAE_COMP', ['a', 'x', 'y', 'z', 'mu', 'logstd', 'ma', 'mx', 'my', 'mz', 'mmu', 'mlogstd', 
@@ -28,6 +30,67 @@ RNN_COMP_WITH_VAE = namedtuple("RNN_COMP_WITH_VAE", ['logstd', 'mean', 'loss', '
                                                      'pz', 'kl2vae', 'state_in', 'last_state'])
 
 np.random.seed(1234567)
+
+def traj_segment_generator(pi, env, horizon=100, stochastic=True):
+    t = 0
+    new = True
+    ob = env.reset()
+    ob = obs_processor.process(ob)
+
+    obs = np.array([ob for _ in range(horizon)])
+    # discrete simple action
+    acs = np.zeros(horizon, "int32")
+    news = np.zeros(horizon, "int32")
+    vpreds = np.zeros(horizon, "float32")
+    rews = np.zeros(horizon, "float32")
+
+    ep_rets = []
+    ep_lens = []
+    cur_ep_ret = 0
+    cur_ep_len = 0
+
+    while True:
+        ac, vpred = pi.action(ob, stochastic)
+        if t % horizon == 0 and t > 0:
+            yield{"ob": obs, "ac": acs, "rew": rews, "vpred": vpreds, "new": news,
+                  "nextvpred": vpred * (1-new), "ep_rets": ep_rets, "ep_lens": ep_lens}
+            ep_rets = []
+            ep_lens = []
+        i = t % horizon
+        obs[i] = ob
+        vpreds[i] = vpred
+        news[i] = new
+        acs[i] = ac
+        # pong's action need to be a tuple
+        ob, rew, done,  _ = env.step(ac)
+        cur_ep_ret += rew
+        cur_ep_len += 1
+
+        t += 1
+
+        if done:
+            ep_lens.append(cur_ep_len)
+            ep_rets.append(cur_ep_ret)
+            cur_ep_ret = 0
+            cur_ep_len = 0
+            ob = env.reset()
+
+def add_vtarg_and_adv(seg, gamma, lam):
+    """
+    Compute target value using TD(lambda) estimator, and advantage with GAE(lambda)
+    """
+    # I think is has been simplified
+    new = np.append(seg["new"], 0) # last element is only used for last vtarg, but we already zeroed it if last new = 1
+    vpred = np.append(seg["vpred"], seg["nextvpred"])
+    T = len(seg["rew"])
+    seg["adv"] = gaelam = np.empty(T, 'float32')
+    rew = seg["rew"]
+    lastgaelam = 0
+    for t in reversed(range(T)):
+        nonterminal = 1-new[t+1]
+        delta = rew[t] + gamma * vpred[t+1] * nonterminal - vpred[t]
+        gaelam[t] = lastgaelam = delta + gamma * lam * nonterminal * lastgaelam
+    seg["tdlamret"] = seg["adv"] + seg["vpred"]
 
 class PongModelWrapper(object):
     def __init__(self, sess, na, n_tasks, wrappers, rnn_size, vcomps, rcomps):
@@ -213,7 +276,7 @@ def build_world_model(sess, n_tasks, z_size, rnn_size=256,
           model_dir="tf_rnn", layer_norm=False,
           recurrent_dp = 1.0,
           input_dp = 1.0,
-          output_dp = 1.0):
+          output_dp = 1.0, **kargs):
     # TODO remove this limit.
     batch_size_per_task = 1
     batch_size = batch_size_per_task * n_tasks
@@ -282,13 +345,33 @@ def build_world_model(sess, n_tasks, z_size, rnn_size=256,
                                        seq_len, batch_size_per_task, kl_tolerance)
         rnn_vcomps.append(rnn_vcomp)
 
-    sess.run(tf.global_variables_initializer())
-    # initialize and load the model
-    sess.run(tf.global_variables_initializer())
-    for i, comp in enumerate(vae_comps):
-        loadFromFlat(comp.var_list, model_dir+ "/vae%i.p" % i)
-    loadFromFlat(rnn_comp.var_list, model_dir+'/rnn.p')
-    return na, wrappers, vae_comps, rnn_vcomps
+    return na, wrappers, vae_comps, rnn_comp, rnn_vcomps
+
+# pi is the agent
+def ac(env, pi, gamma, lam, horizon, rl_dir):
+    seg_gen = traj_segment_generator(pi, env, horizon, stochastic=True)
+
+    ep_rets = deque(maxlen=100)
+    ep_lens = deque(maxlen=100)
+    last_episodes = episodes = 0
+
+    while True:
+        # generate one episode
+        seg = seg_gen.__next__()
+        add_vtarg_and_adv(seg, gamma, lam)
+        # output the recent one.
+
+        if len(seg["ep_rets"]) > 0:
+            ep_rets.extend(seg["ep_rets"])
+            ep_lens.extend(seg["ep_lens"])
+            for i in range(len(seg["ep_rets"])):
+                print("ep%i ret:%.2f steps:%i average_ret:%.1f average_steps:%.1f" %
+                    (episodes+i+1, seg["ep_rets"][i], seg["ep_lens"][i], np.mean(ep_rets), np.mean(ep_lens)))
+            episodes += len(seg["ep_rets"])
+
+        pi.train(seg)
+        if episodes - last_episodes > 100:
+            saveToFlat(pi.net.get_variables(), rl_dir+'/%i.p' % episodes)
 
 
 def main():
@@ -304,28 +387,40 @@ def main():
     parser.add_argument('--recurrent-dp', type=float, default=1.0, help="dropout ratio in recurrent")
     parser.add_argument('--input-dp', type=float, default=1.0, help="dropout ratio in input")
     parser.add_argument('--output-dp', type=float, default=1.0, help="dropout ratio in output")
+
+    parser.add_argument('--lr', type=float, default=1e-4)
+    parser.add_argument('--gamma', type=float, default=0.99)
+    parser.add_argument('--lam', type=float, default=0.95)
+    parser.add_argument('--horizon', type=int, default=200)
+
+
+
+
     args = vars(parser.parse_args())
 
     check_dir(args["model_dir"])
-    with open(args["model_dir"]+'/args.json', "w") as f:
-      json.dump(args, f, indent=2, sort_keys=True)
+    check_dir(args["rl_dir"])
 
     config = tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
     config.gpu_options.allow_growth = True
 
     with tf.Session(config=config) as sess:
-        na, wrappers, vcomps, rcomps = build_world_model(sess, **args)
+        na, wrappers, vcomps, rmcomp, rcomps = build_world_model(sess, **args)
+        fsize = args["z_size"] + args["rnn_size"] * 2
+        agent = Agent(sess, args["lr"], input_size=fsize, num_output=na,
+                      hid_size=32, num_hid_layers=2)
+        sess.run(tf.global_variables_initializer())
+
+        # make up the environment
+        for i, comp in enumerate(vcomps):
+            loadFromFlat(comp.var_list, args["model_dir"] + "/vae%i.p" % i)
+        loadFromFlat(rmcomp.var_list, args["model_dir"] + '/rnn.p')
+
+        # I can ensure the env work properly
         env = PongModelWrapper(sess, na, args["n_tasks"], wrappers, args["rnn_size"],
                                vcomps, rcomps)
-        s = env.reset()
-        done = False
-        steps = 0
-        pa = np.arange(6)
-        while not done:
-          steps+=1
-          action = np.random.choice(pa)
-          s, r, done = env.step(action)
-        print(steps)
+        ac(env, agent, args["gamma"], args["lam"], args["horizon"])
+
 
 if __name__ == '__main__':
   main()
