@@ -14,16 +14,17 @@ class Agent(object):
         self.net = MlpNetwork(name=policy_name, **kargs)
         self.action_dict = action_dict
         self.opt = tf.train.AdamOptimizer(learning_rate=lr,
-                                beta1=0.9, beta2=0.999,epsilon=1e-8).minimize(self.net.policy_loss)
+                                beta1=0.9, beta2=0.999,epsilon=1e-8).minimize(self.net.total_loss)
 
     def action(self, ob, stochastic=True):
         # obs is only one state by default
         feed_dict = {self.net.ob: ob[None]}
-        prob = self.sess.run(self.net.p, feed_dict=feed_dict)
+        prob, value = self.sess.run([self.net.p, self.net.v], feed_dict=feed_dict)
         # the batch_size is one
         prob = prob[0]
+        value = value[0]
         # print("prob  " , prob)
-
+        #print(prob)
         if not stochastic:
             action = np.argmax(prob, -1)
         else:
@@ -31,14 +32,21 @@ class Agent(object):
 
         if self.action_dict:
             action = self.action_dict[action]
-        return action
+        return action, value
 
     # ep should have 1. ob 2. ret(discounted return) 3. action
     def train(self, seg):
-        feed_dict = {self.net.ob: seg["ob"],
+        seg["ob"] = np.transpose(seg["ob"], [1, 0, 2])
+        
+        feed_dict = {self.net.ob: seg["ob"][0],
                      self.net.r: seg["tdlamret"],
                      self.net.action:seg["ac"],
                      self.net.td: seg["adv"]}
 
         self.sess.run(self.opt, feed_dict=feed_dict)
 
+        #feed_dict = {self.net.ob: seg["ob"][1],
+        #             self.net.r: seg["tdlamret"],
+        #             self.net.action:seg["ac"],
+        #             self.net.td: seg["adv"]}
+        #self.sess.run(self.opt, feed_dict=feed_dict)
