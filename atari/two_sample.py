@@ -16,13 +16,13 @@ from env import make_env
 import os
 from env import make_atari
 from config import env_name
-import copy
-import random
-from datetime import datetime
-from agent import Agent
 from collections import deque
 from wrappers import DatasetTransposeWrapper, DatasetSwapWrapper, DatasetHorizontalConcatWrapper,\
                        DatasetVerticalConcatWrapper, DatasetColorWrapper
+from mlp_policy import MlpPolicy
+import tf_utils as U
+
+
 VAE_COMP = namedtuple('VAE_COMP', ['a', 'x', 'y', 'z', 'mu', 'logstd', 'ma', 'mx', 'my', 'mz', 'mmu', 'mlogstd', 
                                     'r_loss', 'kl_loss', 'loss', 'var_list', 'fc_var_list', 'train_opt'])
 RNN_COMP_WITH_OPT = namedtuple('RNN_COMP', ['z_input', 'a', 'logmix', 'mean', 'logstd', 'var_list'])
@@ -401,7 +401,7 @@ def main():
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--lam', type=float, default=0.95)
-    parser.add_argument('--horizon', type=int, default=1000)
+    parser.add_argument('--horizon', type=int, default=10000)
 
 
 
@@ -417,8 +417,30 @@ def main():
     with tf.Session(config=config) as sess:
         na, wrappers, vcomps, rmcomp, rcomps = build_world_model(sess, **args)
         fsize = (args["z_size"] + args["rnn_size"] * 2,)
-        agent = Agent(sess, args["lr"], input_size=fsize, num_output=na,
-                      hid_size=32, num_hid_layers=2)
+        pi = MlpPolicy(sess, input_size=fsize, num_output=na,
+                       hid_size=32, num_hid_layers=2)
+        oldpi = MlpPolicy(sess, input_size=fsize, num_output=na,
+                          hid_size=32, num_hid_layers=2)
+
+        tf_adv = tf.placeholder(dtype=tf.float32, shape=[None], name='tf_adv')  # Empirical return
+        tf_ret = tf.placeholder(dtype=tf.float32, shape=[None], name='tf_ret')  # Empirical return
+        tf_ac = pi.pdtype.sample_placeholder([None], name='tf_ac')
+
+        ratio = tf.exp(pi.pd.logp(tf_ac) - oldpi.pd.logp(tf_ac))
+        surr1 = ratio * tf_adv
+        surr2 = U.clip(ratio, 1.0 - clip_param, 1.0 + clip_param) * tf_adv
+        policy_loss = - U.mean(tf.minimum(surr1, surr2))
+
+        var_list = pi.get_variables()
+
+        value_loss = tf.reduce_mean(tf.square(pi.vpred-tf_ret))
+        total_loss = policy_loss + value_loss
+        assign_old_eq_new = U.function([], [], updates=[tf.assign(oldv, newv)
+                                                        for (oldv, newv) in
+                                                        zipsame(oldpi.get_variables(), pi.get_variables())])
+        opt_for_policy = tf.train.AdamOptimizer(learning_rate=args["lr"]).minimize(total_loss,
+                                                                                   name='opt_p',
+                                                                                   var_list=var_list)
         sess.run(tf.global_variables_initializer())
 
         # make up the environment
@@ -429,8 +451,33 @@ def main():
         # I can ensure the env work properly
         env = PongModelWrapper(sess, na, args["n_tasks"], wrappers, args["rnn_size"],
                                vcomps, rcomps)
-        ac(env, agent, args["gamma"], args["lam"], args["horizon"], args["rl_dir"])
 
+        steps = 0
+        seg_gen = traj_segment_generator(pi, env, horizon, stochastic=True)
+        while True:
+            seg = seg_gen.__next__()
+            print('\n')
+            add_vtarg_and_adv(seg, args["gamma"], args["lam"])
+            ob, ac, atarg, tdlamret = seg["ob"], seg["ac"], seg["adv"], seg["tdlamret"]
+            atarg = (atarg - atarg.mean()) / atarg.std()
+
+            ob = np.transpose(ob, [1, 0, 2])
+            ob = ob.reshape(-1, ob.shape[-1])
+            ac = np.tile(ac, [2, 1])
+            atarg = np.tile(atarg, [2, 1])
+            tdlamret = np.tile(tdlamret, [2, 1])
+
+            d = Dataset(dict(ob=ob, ac=ac, atarg=atarg, vtarg=tdlamret), shuffle=True)
+            assign_old_eq_new()
+            for _ in range(5):
+                for batch in d.iterate_once(500):
+                    _ = sess.run(opt_for_policy, feed_dict={pi.ob: batch["ob"],
+                                                 pi.stochastic: True,
+                                                 oldpi.ob: batch["ob"],
+                                                 oldpi.stochastic: True,
+                                                 tf_ac: batch['ac'],
+                                                 tf_ret: batch['vtarg'],
+                                                 tf_adv: batch["atarg"]})
 
 if __name__ == '__main__':
   main()
