@@ -69,7 +69,7 @@ print(var_list2)
 loadFromFlat(var_list, model_path_name+'/vae0.p')
 #loadFromFlat(var_list2, model_path_name + '/final_vae1.p')
 #loadFromFlat(var_list2, 'tf_rnn/final_vae1.p')
-loadFromFlat(var_list2, model_path_name+'/vae1.p')
+loadFromFlat(var_list2, model_path_name+'/vae2.p')
 
 if not os.path.exists(output_dir):
     os.mkdir(output_dir)
@@ -87,6 +87,6 @@ for i in range(n):
     #reconstruct = reconstructT[:, :, ::-1, :]
     r_losses.append(r_loss)
     #print(i, np.max(frame), np.max(reconstruct), r_loss)
-    imsave(output_dir+'/%s.png' % pad_num(i), 255.*frame[0].reshape(64, 64))
-    imsave(output_dir+'/%s_vae.png' % pad_num(i), 255.*reconstruct[0].reshape(64, 64))
+    #imsave(output_dir+'/%s.png' % pad_num(i), 255.*frame[0].reshape(64, 64))
+    imsave(output_dir+'/%s_b.png' % pad_num(i), 255.*reconstruct[0].reshape(64, 64))
 print("the mean of reconstruction loss", np.mean(r_losses))

@@ -240,7 +240,8 @@ def learn(sess, n_tasks, z_size, data_dir, num_steps, max_seq_len,
     configure("%s/%s_rnn" % (model_dir, env_name))
     lf = open(model_dir+'/log_%s' % datetime.now().isoformat(), "w")
     # define env
-    na = make_env(env_name).action_space.n
+    na = 3
+    #na = make_env(env_name).action_space.n
     input_size = z_size + na
     output_size = z_size
 
@@ -572,7 +573,7 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--z-size', type=int, default=32, help="z of VAE")
-    parser.add_argument('--data-dir', default="record", help="the directory of data")
+    parser.add_argument('--data-dir', default="record2", help="the directory of data")
     parser.add_argument('--max-seq-len', type=int, default=25, help="the maximum steps of dynamics to catch")
     parser.add_argument('--num-steps', type=int, default=4000, help="number of training iterations")
 

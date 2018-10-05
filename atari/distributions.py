@@ -1,5 +1,5 @@
 import tensorflow as tf
-import net_code.tf_utils as U
+import tf_utils as U
 
 class Pd(object):
     """

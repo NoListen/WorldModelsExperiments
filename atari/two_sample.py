@@ -21,7 +21,7 @@ from wrappers import DatasetTransposeWrapper, DatasetSwapWrapper, DatasetHorizon
                        DatasetVerticalConcatWrapper, DatasetColorWrapper
 from mlp_policy import MlpPolicy
 import tf_utils as U
-
+from dataset import Dataset
 
 VAE_COMP = namedtuple('VAE_COMP', ['a', 'x', 'y', 'z', 'mu', 'logstd', 'ma', 'mx', 'my', 'mz', 'mmu', 'mlogstd', 
                                     'r_loss', 'kl_loss', 'loss', 'var_list', 'fc_var_list', 'train_opt'])
@@ -30,6 +30,11 @@ RNN_COMP_WITH_VAE = namedtuple("RNN_COMP_WITH_VAE", ['logstd', 'mean', 'loss', '
                                                      'pz', 'kl2vae', 'state_in', 'last_state'])
 
 np.random.seed(1234567)
+
+def zipsame(*seqs):
+    L = len(seqs[0])
+    assert all(len(seq) == L for seq in seqs[1:])
+    return zip(*seqs)
 
 def traj_segment_generator(pi, env, horizon=100, stochastic=True):
     t = 0
@@ -51,7 +56,7 @@ def traj_segment_generator(pi, env, horizon=100, stochastic=True):
     wid = int(np.random.rand() > 0.5)
     while True:
         #wid = int(np.random.rand() > 0.5)
-        ac, vpred = pi.action(ob[0], stochastic)
+        ac, vpred = pi.act(stochastic, ob[wid])
         if t % horizon == 0 and t > 0:
             yield{"ob": obs, "ac": acs, "rew": rews, "vpred": vpreds, "new": news,
                   "nextvpred": vpred * (1-new), "ep_rets": ep_rets, "ep_lens": ep_lens}
@@ -112,8 +117,12 @@ class PongModelWrapper(object):
         tf_last_states = [rcomp.last_state for rcomp in rcomps]
         self.tf_last_states = tuple(tf_last_states)
 
-        tf_z = [vcomp.z for vcomp in vcomps]
-        self.tf_z = tuple(tf_z)
+        #tf_z = [vcomp.z for vcomp in vcomps]
+        #self.tf_z = tuple(tf_z)
+        tf_mu = [vcomp.mu for vcomp in vcomps]
+        self.tf_z = tuple(tf_mu)
+
+
         self.last_s = None
 
     def reset(self):
@@ -403,11 +412,11 @@ def main():
     parser.add_argument('--lam', type=float, default=0.95)
     parser.add_argument('--horizon', type=int, default=10000)
 
-
-
-
+    parser.add_argument('--clip_param', type=float, default=0.2)
     args = vars(parser.parse_args())
 
+
+    clip_param = args["clip_param"]
     check_dir(args["model_dir"])
     check_dir(args["rl_dir"])
 
@@ -417,14 +426,20 @@ def main():
     with tf.Session(config=config) as sess:
         na, wrappers, vcomps, rmcomp, rcomps = build_world_model(sess, **args)
         fsize = (args["z_size"] + args["rnn_size"] * 2,)
-        pi = MlpPolicy(sess, input_size=fsize, num_output=na,
-                       hid_size=32, num_hid_layers=2)
-        oldpi = MlpPolicy(sess, input_size=fsize, num_output=na,
-                          hid_size=32, num_hid_layers=2)
+        pi = MlpPolicy("pi", input_size=fsize, num_output=na,
+                       hid_size=16, num_hid_layers=2)
+        oldpi = MlpPolicy("oldpi", input_size=fsize, num_output=na,
+                          hid_size=16, num_hid_layers=2)
 
         tf_adv = tf.placeholder(dtype=tf.float32, shape=[None], name='tf_adv')  # Empirical return
         tf_ret = tf.placeholder(dtype=tf.float32, shape=[None], name='tf_ret')  # Empirical return
         tf_ac = pi.pdtype.sample_placeholder([None], name='tf_ac')
+
+        kloldnew = oldpi.pd.kl(pi.pd)
+        ent = pi.pd.entropy()
+        meankl = tf.reduce_mean(kloldnew)
+        meanent = tf.reduce_mean(ent)
+        pol_entpen = (-0.01) * meanent
 
         ratio = tf.exp(pi.pd.logp(tf_ac) - oldpi.pd.logp(tf_ac))
         surr1 = ratio * tf_adv
@@ -434,7 +449,7 @@ def main():
         var_list = pi.get_variables()
 
         value_loss = tf.reduce_mean(tf.square(pi.vpred-tf_ret))
-        total_loss = policy_loss + value_loss
+        total_loss = policy_loss + value_loss + pol_entpen
         assign_old_eq_new = U.function([], [], updates=[tf.assign(oldv, newv)
                                                         for (oldv, newv) in
                                                         zipsame(oldpi.get_variables(), pi.get_variables())])
@@ -453,8 +468,10 @@ def main():
                                vcomps, rcomps)
 
         steps = 0
-        seg_gen = traj_segment_generator(pi, env, horizon, stochastic=True)
+        episodes = 1
+        seg_gen = traj_segment_generator(pi, env, args["horizon"], stochastic=True)
         while True:
+            steps += 1
             seg = seg_gen.__next__()
             print('\n')
             add_vtarg_and_adv(seg, args["gamma"], args["lam"])
@@ -467,6 +484,9 @@ def main():
             atarg = np.tile(atarg, [2, 1])
             tdlamret = np.tile(tdlamret, [2, 1])
 
+            for i in range(len(seg["ep_rets"])):
+              print("episode %i: obtain reward %.2f with %i steps" % (episodes, seg["ep_rets"][i], seg["ep_lens"][i]))
+              episodes += 1
             d = Dataset(dict(ob=ob, ac=ac, atarg=atarg, vtarg=tdlamret), shuffle=True)
             assign_old_eq_new()
             for _ in range(5):
@@ -478,6 +498,8 @@ def main():
                                                  tf_ac: batch['ac'],
                                                  tf_ret: batch['vtarg'],
                                                  tf_adv: batch["atarg"]})
+            if steps % 100 == 0:
+              saveToFlat(var_list, args['rl_dir']+'/%i.p' % steps)
 
 if __name__ == '__main__':
   main()

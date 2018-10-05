@@ -29,7 +29,7 @@ class MlpPolicy(object):
         # select or sample actions
         self.stochastic = tf.placeholder(dtype=tf.bool, shape=())
         ac = U.switch(self.stochastic, self.pd.sample(), self.pd.mode())
-        self.vpred = tf.contrib.layers.fully_connected(concat_h_v, 1, activation_fn=None, scope='value_final')
+        self.vpred = tf.contrib.layers.fully_connected(last_out, 1, activation_fn=None, scope='value_final')
         self._act = U.function([self.stochastic, self.ob], [ac, self.vpred])
 
     def act(self, stochastic, ob):

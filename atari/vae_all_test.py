@@ -228,7 +228,6 @@ def learn(sess, z_size, data_dir, num_steps, max_seq_len,
     print("The total batch size is", batch_size)
 
     check_dir(model_dir)
-    lf = open(model_dir+'/log_%s' % datetime.now().isoformat(), "w")
     # define env
     na = make_env(env_name).action_space.n
     input_size = z_size + na
@@ -246,6 +245,7 @@ def learn(sess, z_size, data_dir, num_steps, max_seq_len,
 
     filelist = os.listdir(data_dir)
     filelist = [f for f in filelist if '.npz' in f]
+    print(filelist, "Ohhu")
     fn =  random.choice(filelist)
     print("the file name is", fn)
     obs = np.load(os.path.join(data_dir, fn))["obs"]

@@ -332,13 +332,13 @@ def learn(sess, z_size, data_dir, max_seq_len,
         comp = vae_comps[j]
         w = wrappers[j]
         # real data or dream data
-        if i < rn:
-          if w is None:
-            feed[comp.x] = frame
-          else:
-            feed[comp.x] = w.data_transform(frame)
+        #if i < rn:
+        if w is None:
+          feed[comp.x] = frame
         else:
-            feed[comp.x] = pys[j]
+          feed[comp.x] = w.data_transform(frame)
+        #else:
+        #    feed[comp.x] = pys[j]
         tz = sess.run(vae_comps[0].z, feed)
         feed[comp.a] = action # the same for all tasks.
         rcomp = rnn_vcomps[j]
